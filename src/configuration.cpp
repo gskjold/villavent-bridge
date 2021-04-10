@@ -243,7 +243,7 @@ bool configuration::hasConfig() {
 	switch(configVersion) {
 		case 42:
 			configVersion = -1; // Prevent loop
-			if(loadConfig42(EEPROM_CONFIG_ADDRESS+1)) {
+			if(loadConfig42()) {
 				configVersion = EEPROM_CHECK_SUM;
 				return true;
 			} else {
@@ -254,110 +254,129 @@ bool configuration::hasConfig() {
 		case EEPROM_CHECK_SUM:
 			return true;
 		default:
-			configVersion = 0;
+			configVersion = -1;
 			return false;
 	}
 }
 
-bool configuration::loadConfig42(int address) {
-	bool success = false;
+bool configuration::loadConfig42() {
+	EEPROM.begin(512);
+	char* ssid;
+	char* psk;
+	char* ip;
+	char* gw;
+	char* subnet;
 
-	EEPROM.begin(EEPROM_SIZE);
-	int cs = EEPROM.read(address);
-	if (cs == EEPROM_CHECK_SUM) {
-		char* ssid;
-		char* psk;
-		char* ip;
-		char* gw;
-		char* subnet;
+	int cs = EEPROM.read(0);
+	Serial.printf("Config version: %d\n", cs);
+	int address = 1;
 
-		address += readString(address, &ssid);
-		address += readString(address, &psk);
-		address += readString(address, &ip);
-		address += readString(address, &gw);
-		address += readString(address, &subnet);
+	address += readString(address, &ssid);
+	address += readString(address, &psk);
+	address += readString(address, &ip);
+	address += readString(address, &gw);
+	address += readString(address, &subnet);
 
-		WiFiConfig wifi;
-		clearWifi(wifi);
-		strcpy(wifi.ssid, ssid);
-		strcpy(wifi.psk, psk);
-		strcpy(wifi.ip, ip);
-		strcpy(wifi.gateway, gw);
-		strcpy(wifi.subnet, subnet);
-		strcpy(wifi.dns1, gw);
+	Serial.printf("SSID: %s\n", ssid);
+	Serial.printf("PSK: %s\n", psk);
+	Serial.printf("IP: %s\n", ip);
+	Serial.printf("GW: %s\n", gw);
+	Serial.printf("Subnet: %s\n", subnet);
 
-		MqttConfig mqtt;
-		clearMqtt(mqtt);
+	WiFiConfig wifi;
+	clearWifi(wifi);
+	strcpy(wifi.ssid, ssid);
+	strcpy(wifi.psk, psk);
+	strcpy(wifi.ip, ip);
+	strcpy(wifi.gateway, gw);
+	strcpy(wifi.subnet, subnet);
+	strcpy(wifi.dns1, gw);
 
-		char* host;
-		int port;
-		char* clientId;
-		char* pub;
-		char* sub;
-		char* user;
-		char* pass;
+	MqttConfig mqtt;
+	clearMqtt(mqtt);
 
-		bool mqtt_en = false;
-		address += readBool(address, &mqtt_en);
-		if(mqtt_en) {
-			address += readString(address, &host);
-			address += readInt(address, &port);
-			address += readString(address, &clientId);
-			address += readString(address, &pub);
-			address += readString(address, &sub);
+	char* host;
+	int port;
+	char* clientId;
+	char* pub;
+	char* sub;
+	char* user;
+	char* pass;
 
-			bool secure = false;
-			address += readBool(address, &secure);
-			if (secure) {
-				address += readString(address, &user);
-				address += readString(address, &pass);
-			}
-		}
+	bool mqtt_en = false;
+	address += readBool(address, &mqtt_en);
+	if(mqtt_en) {
+		address += readString(address, &host);
+		address += readInt(address, &port);
+		address += readString(address, &clientId);
+		address += readString(address, &pub);
+		address += readString(address, &sub);
+
+		Serial.printf("Host: %s\n", host);
+		Serial.printf("Port: %d\n", port);
+		Serial.printf("Client ID: %s\n", clientId);
+		Serial.printf("Pub: %s\n", pub);
+		Serial.printf("Sub: %s\n", sub);
 
 		strcpy(mqtt.host, host);
 		mqtt.port = port;
 		strcpy(mqtt.clientId, clientId);
 		strcpy(mqtt.publishTopic, pub);
 		strcpy(mqtt.subscribeTopic, sub);
-		strcpy(mqtt.username, user);
-		strcpy(mqtt.password, pass);
 
-		WebConfig web;
+		bool secure = false;
+		address += readBool(address, &secure);
+		if (secure) {
+			address += readString(address, &user);
+			address += readString(address, &pass);
 
-		char* username;
-		char* password;
-
-		uint8_t authSecurity;
-		address += readByte(address, &authSecurity);
-		if (authSecurity > 0) {
-			address += readString(address, &username);
-			address += readString(address, &password);
-			strcpy(web.username, username);
-			strcpy(web.password, password);
+			strcpy(mqtt.username, user);
+			strcpy(mqtt.password, pass);
 		}
-		web.security = authSecurity;
+	}
 
-		int baud;
-		int unitId;
-		address += readInt(address, &baud);
-		address += readInt(address, &unitId);
+	WebConfig web;
 
-		SystemConfig sys;
-		sys.boardType = 0;
-		sys.unitBaud = baud;
-		sys.unitId = unitId;
+	char* username;
+	char* password;
 
-		NtpConfig ntp;
-		clearNtp(ntp);
+	uint8_t authSecurity;
+	address += readByte(address, &authSecurity);
+	if (authSecurity > 0) {
+		address += readString(address, &username);
+		address += readString(address, &password);
+		strcpy(web.username, username);
+		strcpy(web.password, password);
+	}
+	web.security = authSecurity;
 
-		setSystemConfig(sys);
-		setWiFiConfig(wifi);
-		setMqttConfig(mqtt);
-		setWebConfig(web);
-		setNtpConfig(ntp);
-		success = save();
-    }
-	return success;
+	int baud;
+	int unitId;
+	address += readInt(address, &baud);
+	address += readInt(address, &unitId);
+	EEPROM.end();
+	Serial.println("End");
+
+	SystemConfig sys;
+	sys.boardType = 100;
+	sys.unitBaud = baud;
+	sys.unitId = unitId;
+
+	NtpConfig ntp;
+	clearNtp(ntp);
+
+	Serial.println("Store");
+	Serial.flush();
+	delay(100);
+	setSystemConfig(sys);
+	setWiFiConfig(wifi);
+	setMqttConfig(mqtt);
+	setWebConfig(web);
+	setNtpConfig(ntp);
+	Serial.println("Save");
+	Serial.flush();
+	delay(100);
+	return save();
 }
 
 bool configuration::save() {

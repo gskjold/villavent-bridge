@@ -114,7 +114,7 @@ private:
 
 	bool systemChanged = false, wifiChanged = false, mqttChanged = false, meterChanged = true, domoChanged, ntpChanged = true, entsoeChanged = false;
 
-	bool loadConfig42(int address);
+	bool loadConfig42();
 
 	int readString(int pAddress, char* pString[]);
 	int readInt(int pAddress, int *pValue);

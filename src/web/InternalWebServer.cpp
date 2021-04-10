@@ -612,7 +612,7 @@ void InternalWebServer::handleSetup() {
 		config->clear();
 
 		switch(sys.boardType) {
-			case 200: // ESP32
+			case 100: // ESP32
 			/*
 				gpioConfig->apPin = 0;
 				gpioConfig->ledPin = 2;
