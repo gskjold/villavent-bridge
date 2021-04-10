@@ -1,0 +1,15 @@
+[platformio]
+default_envs = dev
+
+[env:dev]
+platform = espressif32
+board = lolin_d32
+framework = arduino
+upload_speed = 115200
+lib_deps = ${common.lib_deps}
+monitor_speed = 115200
+build_flags =
+    -D DEBUG_MODE=1
+extra_scripts =
+    pre:scripts/addversion.py
+    scripts/makeweb.py
