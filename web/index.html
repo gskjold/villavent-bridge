@@ -1,0 +1,55 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Villavent</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link rel="stylesheet" type="text/css" href="boot.css"/>
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.4.1/css/bootstrap.min.css"/>
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+    <style>
+        .bg-gray-dark {
+            background-color: var(--gray-dark);
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <main role="main" class="container">
+        <div class="d-flex align-items-center p-3 my-2 text-white-50 bg-gray-dark rounded shadow">
+            <div class="lh-100">
+                <h5 class="mb-0 text-white lh-100">Villavent VTR300 <small>v5.5.0 (boot v2.0.6)</small></h5>
+                <small>villavent-han v1.0.0</small>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-3">
+                <h6 class="border-bottom border-gray pb-2 mb-4">Control and readings</h6>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="input-group">
+                            <input type="number" value="22" max="22" min="12" class="form-control"/>
+                            <div class="input-group-append">
+                                <div class="input-group-text">°C</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <select class="form-control">
+                            <option value="4">Auto</option>
+                            <option value="3">High</option>
+                            <option value="2">Normal</option>
+                            <option value="1">Low</option>
+                            <option value="0">Off</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <h6 class="border-bottom border-gray pb-2 mb-4">Configuration</h6>
+            </div>
+            <div class="col-md-3"></div>
+            <div class="col-md-3"></div>
+        </div>
+    </main>
+</body>
+</html>
