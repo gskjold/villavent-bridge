@@ -1,0 +1,4 @@
+#define WIFI_CONNECTION_TIMEOUT 30000;
+
+#define MAX485_DE      22
+#define MAX485_RE_NEG  23
