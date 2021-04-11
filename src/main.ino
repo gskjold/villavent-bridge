@@ -31,8 +31,8 @@
 #include "web/InternalWebServer.h"
 #include "HwTools.h"
 
-int currentId, currentBaud;
 ModbusMaster node;
+bool modbusBusy = false;
 
 LinkedList<Register*> registers = LinkedList<Register*>();
 
@@ -170,6 +170,10 @@ void setup() {
         //tz = new Timezone(dst, std);
         //ws.setTimezone(tz);
     }
+
+    MqttConfig mc;
+    config.getMqttConfig(mc);
+    mqttEnabled = strlen(mc.host) > 0;
   } else {
     debugW("No config, booting AP");
     swapWifiMode();
@@ -181,16 +185,17 @@ void setup() {
   #endif
 
   debugI("Setting up web server");
-  ws.setup(&config, &mqtt, debugger);
+  ws.setup(&config, &mqtt, &registers, debugger);
+  ws.setMessageHandler(mqttMessageReceived);
 
-  xTaskCreatePinnedToCore(
-      Task1code, /* Function to implement the task */
-      "Webserver", /* Name of the task */
-      10000,  /* Stack size in words */
-      NULL,  /* Task input parameter */
-      -1,  /* Priority of the task */
-      &Task1,  /* Task handle. */
-      0); /* Core where the task should run */
+//  xTaskCreatePinnedToCore(
+//      Task1code, /* Function to implement the task */
+//      "Webserver", /* Name of the task */
+//      10000,  /* Stack size in words */
+//      NULL,  /* Task input parameter */
+//      -1,  /* Priority of the task */
+//      &Task1,  /* Task handle. */
+//      0); /* Core where the task should run */
 
 }
 
@@ -227,16 +232,10 @@ void WiFi_connect() {
 			dns2.fromString(wifi.dns2);
 			WiFi.config(ip, gw, sn, dns1, dns2);
 		} else {
-			#if defined(ESP32)
 			WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE); // Workaround to make DHCP hostname work for ESP32. See: https://github.com/espressif/arduino-esp32/issues/2537
-			#endif
 		}
 		if(strlen(wifi.hostname) > 0) {
-			#if defined(ESP8266)
-			WiFi.hostname(wifi.hostname);
-			#elif defined(ESP32)
 			WiFi.setHostname(wifi.hostname);
-			#endif
 		}
 		WiFi.begin(wifi.ssid, wifi.psk);
 		yield();
@@ -352,7 +351,8 @@ void MQTT_connect() {
 
 		// Subscribe to the chosen MQTT topic, if set in configuration
 		if (strlen(mqttConfig->subscribeTopic) > 0) {
-			mqtt.subscribe(mqttConfig->subscribeTopic);
+            mqtt.onMessage(mqttMessageReceived);
+			mqtt.subscribe(String(mqttConfig->subscribeTopic) + "/#");
 			debugI("  Subscribing to [%s]\r\n", mqttConfig->subscribeTopic);
 		}
 	} else {
@@ -372,6 +372,7 @@ bool initDone = false;
 int regindex = 0;
 
 unsigned long lastSuccessfulRead = 0;
+unsigned long lastFailedRead = 0;
 unsigned long lastErrorBlink = 0; 
 int lastError = 0;
 
@@ -443,9 +444,6 @@ void loop() {
 
 				config.ackNtpChange();
 			}
-			#if defined ESP8266
-			MDNS.update();
-			#endif
 
 			if(now > 10000 && now - lastErrorBlink > 3000) {
 				errorBlink();
@@ -460,6 +458,7 @@ void loop() {
 			} else if(mqtt.connected()) {
 				mqtt.disconnect();
 			}
+            ws.loop();
 		}
 	} else {
 		if(dnsServer != NULL) {
@@ -476,25 +475,25 @@ void loop() {
     if(config.isSystemChanged()) {
         config.getSystemConfig(sysConfig);
         config.ackSystemChange();
-    }
 
-    if(wifiConnected && sysConfig.unitBaud > 0 && sysConfig.unitId > 0) {
-        if(currentBaud != sysConfig.unitBaud || currentId != sysConfig.unitId) {
+        if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0) {
             debugI("Connecting to ventilation unit at baud %d", sysConfig.unitBaud);
             Serial2.begin(sysConfig.unitBaud);   
             node.begin(sysConfig.unitId, Serial2);
             node.preTransmission(preTransmission);
             node.postTransmission(postTransmission);
-
-            currentId = sysConfig.unitId;
-            currentBaud = sysConfig.unitBaud;
         }
+    }
 
-        unsigned long now = millis();
+    if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0 && (lastFailedRead == 0 || now-lastFailedRead > 30000)) {
         if(regindex == registers.size()) {
             regindex = 0;
         }
         while(regindex < registers.size()) {
+            #if SLAVE_MODE
+                break;
+            #endif
+
             Register* reg = registers.get(regindex);
             regindex++;
             if(reg->needsUpdate(now)) {
@@ -545,17 +544,9 @@ void errorBlink() {
 }
 
 boolean readRegister(Register *reg) {
-    /*
-    if(false) {
-        debugger->print("Updating register ");
-        debugger->print(reg->getName());
-        debugger->print(" starting at ");
-        debugger->print(reg->getStart());
-        debugger->print(" with length ");
-        debugger->println(reg->getLength());
-    }
-    */
-
+    if(modbusBusy)
+        return false;
+    modbusBusy = true;
     node.clearResponseBuffer();
     node.clearTransmitBuffer();
 
@@ -574,20 +565,20 @@ boolean readRegister(Register *reg) {
                 }
             }
         }
+        lastSuccessfulRead = millis();
+        modbusBusy = false;
         return true;
     }
+    lastFailedRead = millis();
     debugE(" - failed");
+    modbusBusy = false;
     return false;
 }
 
 boolean readCoil(Register *reg) {
-    /*
-    if(false) {
-        debugger->print("Updating coil ");
-        debugger->println(reg->getName());
-    }
-    */
-
+    if(modbusBusy)
+        return false;
+    modbusBusy = true;
     node.clearResponseBuffer();
     node.clearTransmitBuffer();
 
@@ -614,44 +605,85 @@ boolean readCoil(Register *reg) {
             }
         }
         lastSuccessfulRead = millis();
+        modbusBusy = false;
         return true;
     }
+    lastFailedRead = millis();
     debugE(" - failed");
+    modbusBusy = false;
     return false;
 }
 
 void mqttMessageReceived(String &topic, String &payload) {
-    debugI("Received message for topic %s", topic);
+    debugI("Received message for topic ");
+    debugI(topic.c_str());
 
-    if(mqttConfig == NULL || !topic.startsWith(mqttConfig->subscribeTopic))
+    if(mqttConfig == NULL)
         return;
-
-    String trimmed = topic.substring(strlen(mqttConfig->subscribeTopic) + 1);
-    debugD(" stripped away base topic gives us: %s", trimmed);
 
     int address = 0;
     int current = 0;
     Register* updateReg = NULL;
-    for(int i = 0; i < registers.size(); i++) {
-        Register* reg = registers.get(i);
-        address = reg->getRegisterAddress(trimmed);
-        if(address != REG_INVALID) {
-            current = reg->getValue(address);
-            if(reg->isWriteable(address) && reg->setFormattedValue(address, payload)) {
-                updateReg = reg;
+    if(topic.toInt() > 0) {
+        address = topic.toInt();
+        for(int i = 0; i < registers.size(); i++) {
+            Register* reg = registers.get(i);
+            if(address > reg->getStart() && address < reg->getStart()+reg->getLength()) {
+                current = reg->getValue(address);
+                if(reg->isWriteable(address) && reg->setFormattedValue(address, payload)) {
+                    updateReg = reg;
+                }
+                #if SLAVE_MODE
+                    reg->setFormattedValue(address, payload);
+                #endif
+                break;
             }
-            break;
+        }
+    } else {
+        if(!mqtt.connected() || !topic.startsWith(mqttConfig->subscribeTopic)) return;
+        String trimmed = topic.substring(strlen(mqttConfig->subscribeTopic) + 1);
+        debugD(" stripped away base topic gives us: ");
+        debugD(trimmed.c_str());
+        debugD(" payload is: ");
+        debugD(payload.c_str());
+
+        for(int i = 0; i < registers.size(); i++) {
+            Register* reg = registers.get(i);
+            address = reg->getRegisterAddress(trimmed);
+            if(address != REG_INVALID) {
+                current = reg->getValue(address);
+                if(reg->isWriteable(address) && reg->setFormattedValue(address, payload)) {
+                    updateReg = reg;
+                }
+                #if SLAVE_MODE
+                    reg->setFormattedValue(address, payload);
+                #endif
+                break;
+            }
         }
     }
+
+    #if SLAVE_MODE
+        return;
+    #endif
     if(updateReg != NULL) {
+        unsigned long now = millis();
+
         int update = updateReg->getValue(address);
         String* name = updateReg->getRegisterName(address);
         String formatted = updateReg->getFormattedValue(address);
-        for(int i = 0; i < 3; i++) {
-            uint8_t result = updateReg->isCoil() ? node.writeSingleCoil(address-1, update) : node.writeSingleRegister(address-1, update);
-            if(result == node.ku8MBSuccess) {
-                sendMqttMessage(name, formatted);
-                return;
+        if(lastFailedRead == 0 || now-lastFailedRead > 30000) {
+            for(int i = 0; i < 3; i++) {
+                if(!modbusBusy) {
+                    modbusBusy = true;
+                    uint8_t result = updateReg->isCoil() ? node.writeSingleCoil(address-1, update) : node.writeSingleRegister(address-1, update);
+                    if(result == node.ku8MBSuccess) {
+                        sendMqttMessage(name, formatted);
+                        return;
+                    }
+                    modbusBusy = false;
+                    delay(1000);
+                }
             }
         }
         debugE("Failed to update register / coil");
@@ -662,7 +694,7 @@ void mqttMessageReceived(String &topic, String &payload) {
 }
 
 void sendMqttMessage(String* name, String &payload) {
-    if(mqttConfig == NULL || strlen(mqttConfig->publishTopic) == 0) return;
+    if(!mqtt.connected() || mqttConfig == NULL || strlen(mqttConfig->publishTopic) == 0) return;
 
     String topic = String(mqttConfig->publishTopic) + "/" + *name;
     debugD("Sending message to %s with payload %s", topic, payload);

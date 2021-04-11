@@ -23,7 +23,7 @@ int Register::getValue(int address) {
         Serial.print(idx);
         Serial.print(" for address ");
         Serial.println(address);
-        return false;
+        return VAL_INVALID;
     }
     return this->values[idx];
 }
@@ -53,7 +53,7 @@ void Register::addRegister(int address, String name, byte permission) {
     }
     this->names[idx] = name;
     this->perms[idx] = permission;
-    this->values[idx] = isReadable(address) ? -1 : 0;
+    this->values[idx] = isReadable(address) ? VAL_INVALID : 0;
 }
 
 String* Register::getRegisterName(int address) {
@@ -62,7 +62,10 @@ String* Register::getRegisterName(int address) {
 }
 
 String Register::getFormattedValue(int address) {
-    return String(getValue(address));
+    int val = getValue(address);
+    if(val == VAL_INVALID)
+        return "";
+    return String(val);
 }
 
 int Register::getRegisterAddress(String &name) {
@@ -88,6 +91,9 @@ bool Register::isWriteable(int address) {
 }
 
 boolean Register::setFormattedValue(int address, String &value) {
+    #if SLAVE_MODE
+        setValue(address, value.toInt());
+    #endif
     return false;
 }
 

@@ -51,12 +51,21 @@ boolean FanRegister::setFormattedValue(int address, String &value) {
                 return false;
             }
         }
+        #if SLAVE_MODE
+        case REG_FAN_SF_PWM:
+        case REG_FAN_EF_PWM:
+            return setValue(address, (int) (value.toDouble()*10));
+        default:
+            return setValue(address, value.toInt());
+        #endif
     }
     return false;
 };
 
 String FanRegister::getFormattedValue(int address) {
     int value = getValue(address);
+    if(value == VAL_INVALID)
+        return "";
     switch (address) {
         case REG_FAN_SF_PWM:
         case REG_FAN_EF_PWM:

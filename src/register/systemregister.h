@@ -13,7 +13,7 @@
 
 class SystemRegister : public Register {
     public:
-        SystemRegister() : Register("system", 500, 7, 60000, false) {
+        SystemRegister() : Register("system", 500, 7, 3600000, false) {
             addRegister(REG_SYSTEM_TYPE, "system/type", PERM_READ_ONLY);
             addRegister(REG_SYSTEM_PROG_V_HIGH, "system/program/version/high", PERM_READ_ONLY);
             addRegister(REG_SYSTEM_PROG_V_MID, "system/program/version/mid", PERM_READ_ONLY);

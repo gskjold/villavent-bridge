@@ -23,10 +23,11 @@ InternalWebServer::InternalWebServer(HwTools* hw) {
 	this->hw = hw;
 }
 
-void InternalWebServer::setup(configuration* config, MQTTClient* mqtt, Stream* debugger) {
+void InternalWebServer::setup(configuration* config, MQTTClient* mqtt, LinkedList<Register*>* registers, Stream* debugger) {
     this->config = config;
     this->debugger = debugger;
 	this->mqtt = mqtt;
+	this->registers = registers;
 
 	char jsuri[32];
 	snprintf(jsuri, 32, "/application-%s.js", VERSION);
@@ -48,6 +49,9 @@ void InternalWebServer::setup(configuration* config, MQTTClient* mqtt, Stream* d
 	server.on("/mqtt", std::bind(&InternalWebServer::mqttHtml, this));
 	server.on("/web", std::bind(&InternalWebServer::webHtml, this));
 	server.on("/ntp", std::bind(&InternalWebServer::ntpHtml, this));
+
+	server.on("/data.json", HTTP_GET, std::bind(&InternalWebServer::dataJson, this));
+	server.on("/write.json", HTTP_POST, std::bind(&InternalWebServer::writeJson, this));
 
 	server.on("/save", std::bind(&InternalWebServer::handleSave, this));
 	server.onNotFound(std::bind(&InternalWebServer::notFound, this));
@@ -71,11 +75,13 @@ void InternalWebServer::setup(configuration* config, MQTTClient* mqtt, Stream* d
 void InternalWebServer::setMqttEnabled(bool enabled) {
 	mqttEnabled = enabled;
 }
+
+void InternalWebServer::setMessageHandler(THandlerFunction fn) {
+	this->fn = fn;
+}
+
 void InternalWebServer::loop() {
 	server.handleClient();
-}
-extern "C" {
-#include "crypto/base64.h"
 }
 
 bool InternalWebServer::checkSecurity(byte level) {
@@ -249,7 +255,7 @@ void InternalWebServer::indexHtml() {
 		html.replace("{vcc}", vcc > 0 ? String(vcc, 2) : "");
 
 		int rssi = hw->getWifiRssi();
-		html.replace("{rssi}", vcc > 0 ? String(rssi) : "");
+		html.replace("{rssi}", String(rssi));
 
 		html.replace("{cs}", String((uint32_t)(millis64()/1000), 10));
 
@@ -689,14 +695,65 @@ void InternalWebServer::applicationJs() {
 	server.send_P(200, "application/javascript", APPLICATION_JS);
 }
 
+void InternalWebServer::dataJson() {
+	printD("Serving /data.json over http...");
+	uint64_t now = millis64();
+
+	if(!checkSecurity(2))
+		return;
+
+	server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+	server.sendHeader("Pragma", "no-cache");
+	server.sendHeader("Expires", "-1");
+	server.sendHeader("Access-Control-Allow-Origin", "*"); // TODO: Remove
+	server.sendHeader("Content-Type", "application/json");
+	server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+	server.send(200);
+
+	server.sendContent("{", 1);
+
+	char json[32];
+	int regindex = 0;
+	while(regindex < registers->size()) {
+		Register* reg = registers->get(regindex);
+		regindex++;
+
+		int start = reg->getStart();
+		int len = reg->getLength();
+        for(int i = 0; i< len; i++) {
+            int address = start + i + 1;
+            String* name = reg->getRegisterName(address);
+            if(*name != "") {
+				String formatted = reg->getFormattedValue(address);
+				snprintf_P(json, sizeof(json), "\"%d\":\"%s\",", address, formatted);
+				server.sendContent(json, strlen(json));
+            }
+        }
+	}
+
+	snprintf_P(json, sizeof(json), "\"u\":\"%lu\"}", (uint32_t) (now / 1000));
+	server.sendContent(json, strlen(json));
+}
+
+void InternalWebServer::writeJson() {
+	String id = server.arg("id");
+	String value = server.arg("value");
+	if(fn != NULL) {
+		fn(id, value);
+		server.send_P(200, "application/javascript", "{}"); // TODO
+	} else {
+		server.send_P(500, "application/javascript", "{}"); // TODO
+	}
+}
+
 size_t InternalWebServer::printD(const char* text)
 {
-	if (debugger) debugger->printf("[DEBUG  ] %s\n", text);
+	if (debugger) debugger->printf("[DEBUG] %s\n", text);
 }
 
 size_t InternalWebServer::printI(const char* text)
 {
-	if (debugger) debugger->printf("[INFO   ] %s\n", text);
+	if (debugger) debugger->printf("[INFO] %s\n", text);
 }
 
 size_t InternalWebServer::printW(const char* text)
@@ -706,7 +763,7 @@ size_t InternalWebServer::printW(const char* text)
 
 size_t InternalWebServer::printE(const char* text)
 {
-	if (debugger) debugger->printf("[ERROR  ] %s\n", text);
+	if (debugger) debugger->printf("[ERROR] %s\n", text);
 }
 
 size_t InternalWebServer::print(const char* text)

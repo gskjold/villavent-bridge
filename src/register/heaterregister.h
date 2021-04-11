@@ -27,7 +27,7 @@
 
 class HeaterRegister : public Register {
     public:
-        HeaterRegister() : Register("hc", 200, 21, 2000, false) {
+        HeaterRegister() : Register("hc", 200, 21, 5000, false) {
             addRegister(REG_HC_HEATER_TYPE, "heater/type");
             addRegister(REG_HC_COOLER_TYPE, "cooler/type");
             addRegister(REG_HC_WCWH_STATE, "hc/state", PERM_READ_ONLY);

@@ -1,4 +1,8 @@
 $(function() {
+    if($("#indexHtml").length > 0) {
+        fetch();
+    }
+
     // For mqtt
     $('#m').on('change', function() {
         var inputs = $('.mc');
@@ -79,9 +83,10 @@ $(function() {
             break;
     }
 
-    // Check for software upgrade
+    // TODO Check for software upgrade
+    return;
     var swv = $('#swVersion')
-    if(meters.length > 0 && swv.length == 1 && swv.text() != "SNAPSHOT") {
+    if(swv.length == 1 && swv.text() != "SNAPSHOT") {
         var v = swv.text().substring(1).split('.');
         var v_major = parseInt(v[0]);
         var v_minor = parseInt(v[1]);
@@ -138,4 +143,94 @@ $(function() {
             }
         });
     }
+});
+
+var interval = 5000;
+var fetch = function() {
+    $.ajax({
+        url: '/data.json',
+        timeout: 10000,
+        dataType: 'json'
+    }).done(function(json) {
+        for(var id in json) {
+            if(!isNaN(id)) {
+                id = parseInt(id);
+            }
+            
+            var str = json[id];
+            if(typeof str === "object") {
+                continue;
+            }
+
+            $('.v'+id).each(function() {
+                var $this = $(this);
+
+                if($this.is('input[type=radio],input[type=checkbox]')) {
+                    $this.prop('checked', $this.val() === str);
+                    return true;
+                }
+
+                if($this.is('input,select')) {
+                    $this.val(str);
+                    return true;
+                }
+
+                var format = $this.data('format');
+
+                if(format === '%d') {
+                    $this.html(parseInt(str));
+                    return true;
+                }
+
+                var match = /\%\.(\d+)f/.exec(format);
+                if(match != null) {
+                    var fractions = parseInt(match[1]);
+                    var num = parseFloat(str);
+                    $this.html(num.toFixed(fractions));
+                    return true;
+                }
+
+                $this.html(str);
+                return true;
+            });
+
+            $('.r'+id).show();
+        }
+        setTimeout(fetch, interval);
+    }).fail(function(x, text, error) {
+        console.log("Failed request");
+        console.log(text);
+        console.log(error);
+        setTimeout(fetch, interval*3);
+
+        setStatus("mqtt", 0);
+        setStatus("wifi", 0);
+        setStatus("modbus", 0);
+        setStatus("esp", 3);
+    });
+};
+
+$('input,select').on('change', function() {
+    var $this = $(this);
+    if($this.is('input[type=radio]') && !$this.is(':checked')) {
+        return;
+    }
+
+    $.ajax({
+        url: '/write.json',
+        method: 'post',
+        timeout: 10000,
+        dataType: 'json',
+        data: {
+            id: $this.attr("name"),
+            value: $this.val()
+        }
+    }).done(function(json) {
+        console.log(json);
+    }).fail(function(x, text, error) {
+        // TODO unset
+        console.log("Failed request");
+        console.log(text);
+        console.log(error);
+    });
 });

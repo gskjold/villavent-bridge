@@ -13,7 +13,7 @@
 
 class InputCoil : public Register {
     public:
-        InputCoil() : Register("inputcoil", 11200, 7, 200, true) {
+        InputCoil() : Register("inputcoil", 11200, 7, 500, true) {
             addRegister(COIL_DI1, "input/1", PERM_WRITE_ONLY);
             addRegister(COIL_DI2, "input/2", PERM_WRITE_ONLY);
             addRegister(COIL_DI3, "input/3", PERM_WRITE_ONLY);

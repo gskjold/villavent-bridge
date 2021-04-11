@@ -10,9 +10,11 @@
 #include "configuration.h"
 #include "Uptime.h"
 #include "HwTools.h"
+#include "register/register.h"
 
 #include "Arduino.h"
 #include <MQTT.h>
+#include <LinkedList.h>
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -21,10 +23,13 @@
 
 class InternalWebServer {
 public:
-	InternalWebServer(HwTools* hw);
-    void setup(configuration* config, MQTTClient* mqtt, Stream* debugger);
+	typedef std::function<void(String &topic, String &payload)> THandlerFunction;
+
+	InternalWebServer(HwTools*);
+    void setup(configuration*, MQTTClient*, LinkedList<Register*>*, Stream*);
     void loop();
 	void setMqttEnabled(bool);
+	void setMessageHandler(THandlerFunction);
 
 private:
 	HwTools* hw;
@@ -32,6 +37,8 @@ private:
 	WebConfig webConfig;
 	MQTTClient* mqtt;
 	bool mqttEnabled = false;
+	LinkedList<Register*>* registers;
+	THandlerFunction fn;
 	Stream* debugger;
 
 	bool uploading = false;
@@ -56,6 +63,9 @@ private:
 	void githubSvg();
 	void applicationJs();
 	void notFound();
+
+	void dataJson();
+	void writeJson();
 
 	void modbusHtml();
 	void wifiHtml();

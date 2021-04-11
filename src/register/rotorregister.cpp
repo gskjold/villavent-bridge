@@ -2,6 +2,8 @@
 
 String RotorRegister::getFormattedValue(int address) {
     int val = getValue(address);
+    if(val == VAL_INVALID)
+        return "";
     switch(address) {
         case REG_ROTOR_RELAY_ACTIVE:
             return val == 0 ? "OFF" : "ON";

@@ -2,6 +2,8 @@
 
 String SystemRegister::getFormattedValue(int address) {
     int value = getValue(address);
+    if(value == VAL_INVALID)
+        return "";
     switch (address) {
         case REG_SYSTEM_TYPE:
             switch(value) {

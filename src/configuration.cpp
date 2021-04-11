@@ -5,6 +5,7 @@ bool configuration::getSystemConfig(SystemConfig& config) {
 		EEPROM.begin(EEPROM_SIZE);
 		EEPROM.get(CONFIG_SYSTEM_START, config);
 		EEPROM.end();
+		systemChanged = true;
 		return true;
 	} else {
 		return false;
@@ -247,7 +248,6 @@ bool configuration::hasConfig() {
 				configVersion = EEPROM_CHECK_SUM;
 				return true;
 			} else {
-				configVersion = 0;
 				return false;
 			}
 			break;
@@ -287,10 +287,12 @@ bool configuration::loadConfig42() {
 	clearWifi(wifi);
 	strcpy(wifi.ssid, ssid);
 	strcpy(wifi.psk, psk);
-	strcpy(wifi.ip, ip);
-	strcpy(wifi.gateway, gw);
-	strcpy(wifi.subnet, subnet);
-	strcpy(wifi.dns1, gw);
+	if(strlen(ip) > 0) {
+		strcpy(wifi.ip, ip);
+		strcpy(wifi.gateway, gw);
+		strcpy(wifi.subnet, subnet);
+		strcpy(wifi.dns1, gw);
+	}
 
 	MqttConfig mqtt;
 	clearMqtt(mqtt);
@@ -347,6 +349,9 @@ bool configuration::loadConfig42() {
 		address += readString(address, &password);
 		strcpy(web.username, username);
 		strcpy(web.password, password);
+	} else {
+		strcpy(web.username, "");
+		strcpy(web.password, "");
 	}
 	web.security = authSecurity;
 
