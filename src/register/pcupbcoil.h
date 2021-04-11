@@ -9,7 +9,7 @@
 
 class PcuPbCoil : public Register {
     public:
-        PcuPbCoil() : Register("pcupb", 12000, 3, 200, true) {
+        PcuPbCoil() : Register("pcupb", 12000, 3, 500, true) {
             addRegister(COIL_HC_PREHEATER_RELAY, "preheater/relay", PERM_READ_ONLY);
             addRegister(COIL_HC_HEATER_RELAY, "heater/relay", PERM_READ_ONLY);
             addRegister(COIL_HC_COMMON_RELAY, "hc/relay", PERM_READ_ONLY);

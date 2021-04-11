@@ -43,6 +43,8 @@ boolean ClockRegister::setFormattedValue(int address, String &value) {
 
 String ClockRegister::getFormattedValue(int address) {
     int value = getValue(address);
+    if(value == VAL_INVALID)
+        return "";
     switch (address) {
         case REG_CLK_Y:
             value = 2000 + value;

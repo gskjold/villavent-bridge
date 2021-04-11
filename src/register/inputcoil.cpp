@@ -22,5 +22,8 @@ boolean InputCoil::setFormattedValue(int address, String &value) {
 }
 
 String InputCoil::getFormattedValue(int address) {
-    return getValue(address) == 0 ? "OFF" : "ON";
+    int value = getValue(address);
+    if(value == VAL_INVALID)
+        return "";
+    return value == 0 ? "OFF" : "ON";
 }

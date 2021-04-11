@@ -4,6 +4,7 @@
 #include "Arduino.h"
 
 #define REG_INVALID -1
+#define VAL_INVALID -404
 
 #define PERM_NONE -1
 #define PERM_FULL 0
@@ -22,7 +23,7 @@ public:
         this->names = new String[length];
         this->perms = new byte[length];
         for(int i=0;i<length;i++) {
-            this->values[i] = 0;
+            this->values[i] = VAL_INVALID;
             this->perms[i] = 0;
         }
     }
@@ -53,7 +54,7 @@ private:
     int *values;
     String *names;
     byte *perms;
-    unsigned long lastUpdated;
+    unsigned long lastUpdated = 0;
 };
 
 #endif

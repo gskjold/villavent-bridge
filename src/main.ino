@@ -1,7 +1,9 @@
 #include "Arduino.h"
 #include <LinkedList.h>
+#include "Update.h"
 
 #include "main.h"
+#include "debugger.h"
 #include "register/fanregister.h"
 #include "register/heaterregister.h"
 #include "register/tempsensorstatecoil.h"
@@ -20,28 +22,46 @@
 
 #include "configuration.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <ESPmDNS.h>
 #include <DNSServer.h>
+#include <lwip/apps/sntp.h>
 
 #include <MQTT.h>
 #include "web/InternalWebServer.h"
+#include "HwTools.h"
 
-#define MAX485_DE      22
-#define MAX485_RE_NEG  23
-
-int currentId, currentBaud;
 ModbusMaster node;
+bool modbusBusy = false;
 
 LinkedList<Register*> registers = LinkedList<Register*>();
 
+HwTools hw;
 configuration config;
-DNSServer dnsServer;
+SystemConfig sysConfig;
+GpioConfig gpio = {
+    4,
+    5,
+    true,
+    0xFF,
+    0xFF,
+    0xFF,
+    true,
+    0xFF,
+    0,
+    1000,
+    0
+};
+DNSServer* dnsServer = NULL;
 
 WiFiClient *client;
 MQTTClient mqtt(128);
+bool mqttEnabled = false;
+MqttConfig* mqttConfig = NULL;
 
-InternalWebServer ws;
+bool ntpEnabled = false;
 
-HardwareSerial* debugger = NULL;
+InternalWebServer ws(&hw);
 
 void preTransmission()
 {
@@ -69,16 +89,53 @@ void setup() {
   // Start the built-in serial port, probably to Serial Monitor
   Serial.begin(115200);
 
-#if DEBUG_MODE
-	debugger = &Serial;
-#endif
-
+  pinMode(gpio.apPin, INPUT_PULLUP);
   pinMode(MAX485_RE_NEG, OUTPUT);
   pinMode(MAX485_DE, OUTPUT);
   // Init in receive mode
   digitalWrite(MAX485_RE_NEG, 0);
   digitalWrite(MAX485_DE, 0);
 
+  debugI("Booting");
+  hw.setup(&gpio);
+  
+  if(SPIFFS.begin(true)) {
+    bool flashed = false;
+    if(SPIFFS.exists(FILE_FIRMWARE)) {
+        debugI("Found firmware");
+
+        debugI(" flashing");
+        File firmwareFile = SPIFFS.open(FILE_FIRMWARE, "r");
+        debugD(" firmware size: %d\n", firmwareFile.size());
+        uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+        debugD(" available: %d\n", maxSketchSpace);
+        if (!Update.begin(maxSketchSpace, U_FLASH)) {
+            #if DEBUG_MODE
+                debugE("Unable to start firmware update");
+                Update.printError(Serial);
+            #endif
+        } else {
+            while (firmwareFile.available()) {
+                uint8_t ibuffer[128];
+                firmwareFile.read((uint8_t *)ibuffer, 128);
+                Update.write(ibuffer, sizeof(ibuffer));
+            }
+            flashed = Update.end(true);
+        }
+        firmwareFile.close();
+        SPIFFS.remove(FILE_FIRMWARE);
+    }
+    SPIFFS.end();
+    if(flashed) {
+        debugI("Firmware update complete, restarting");
+        Serial.flush();
+        delay(250);
+        ESP.restart();
+        return;
+    }
+  }
+
+  debugI("Adding registers");
   registers.add(new FanRegister());
   registers.add(new HeaterRegister());
   registers.add(new TempSensorStateCoil());
@@ -98,38 +155,52 @@ void setup() {
   WiFi.mode(WIFI_OFF);
 
   if(config.hasConfig()) {
-    config.load();
+    debugI("Loading configuration");
+    config.getSystemConfig(sysConfig);
     WiFi_connect();
-    client = new WiFiClient();
-  } else {
-    if(debugger) {
-      debugger->println("No configuration, booting AP");
+    
+    NtpConfig ntp;
+    if(config.getNtpConfig(ntp)) {
+        debugD("Configuring NTP");
+        configTime(ntp.offset*10, ntp.summerOffset*10, ntp.enable ? ntp.server : "");
+        sntp_servermode_dhcp(ntp.enable && ntp.dhcp ? 1 : 0);
+        ntpEnabled = ntp.enable;
+        //TimeChangeRule std = {"STD", Last, Sun, Oct, 3, ntp.offset / 6};
+        //TimeChangeRule dst = {"DST", Last, Sun, Mar, 2, (ntp.offset + ntp.summerOffset) / 6};
+        //tz = new Timezone(dst, std);
+        //ws.setTimezone(tz);
     }
-    WiFi.disconnect(true);
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_OFF);
-    WiFi.softAP("VillaventBridge");
-    WiFi.mode(WIFI_AP);
 
-    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-    dnsServer.start(53, "*", WiFi.softAPIP());
+    MqttConfig mc;
+    config.getMqttConfig(mc);
+    mqttEnabled = strlen(mc.host) > 0;
+  } else {
+    debugW("No config, booting AP");
+    swapWifiMode();
   }
 
-  ws.setup(&config, debugger);
+  Stream* debugger = NULL;
+  #if DEBUG_MODE
+    debugger = &Serial;
+  #endif
 
-  xTaskCreatePinnedToCore(
-      Task1code, /* Function to implement the task */
-      "Webserver", /* Name of the task */
-      10000,  /* Stack size in words */
-      NULL,  /* Task input parameter */
-      -1,  /* Priority of the task */
-      &Task1,  /* Task handle. */
-      0); /* Core where the task should run */
+  debugI("Setting up web server");
+  ws.setup(&config, &mqtt, &registers, debugger);
+  ws.setMessageHandler(mqttMessageReceived);
+
+//  xTaskCreatePinnedToCore(
+//      Task1code, /* Function to implement the task */
+//      "Webserver", /* Name of the task */
+//      10000,  /* Stack size in words */
+//      NULL,  /* Task input parameter */
+//      -1,  /* Priority of the task */
+//      &Task1,  /* Task handle. */
+//      0); /* Core where the task should run */
 
 }
 
-unsigned long wifiTimeout = 30000;
-unsigned long lastWifiRetry = -wifiTimeout;
+unsigned long wifiTimeout = WIFI_CONNECTION_TIMEOUT;
+unsigned long lastWifiRetry = -WIFI_CONNECTION_TIMEOUT;
 void WiFi_connect() {
 	if(millis() - lastWifiRetry < wifiTimeout) {
 		delay(50);
@@ -137,162 +208,345 @@ void WiFi_connect() {
 	}
 	lastWifiRetry = millis();
 
-	if (debugger) {
-		debugger->println();
-		debugger->println();
-		debugger->print("Connecting to WiFi network ");
-		debugger->println(config.getWifiSsid());
-	}
-
 	if (WiFi.status() != WL_CONNECTED) {
+		WiFiConfig wifi;
+		if(!config.getWiFiConfig(wifi) || strlen(wifi.ssid) == 0) {
+			swapWifiMode();
+			return;
+		}
+
+		debugI("Connecting to WiFi network: %s", wifi.ssid);
+
+		MDNS.end();
 		WiFi.disconnect();
 		yield();
 
 		WiFi.enableAP(false);
 		WiFi.mode(WIFI_STA);
-		if(!config.getWifiIp().isEmpty()) {
-			IPAddress ip, gw, sn(255,255,255,0);
-			ip.fromString(config.getWifiIp());
-			gw.fromString(config.getWifiGw());
-			sn.fromString(config.getWifiSubnet());
-			WiFi.config(ip, gw, sn);
+		if(strlen(wifi.ip) > 0) {
+			IPAddress ip, gw, sn(255,255,255,0), dns1, dns2;
+			ip.fromString(wifi.ip);
+			gw.fromString(wifi.gateway);
+			sn.fromString(wifi.subnet);
+			dns1.fromString(wifi.dns1);
+			dns2.fromString(wifi.dns2);
+			WiFi.config(ip, gw, sn, dns1, dns2);
+		} else {
+			WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE); // Workaround to make DHCP hostname work for ESP32. See: https://github.com/espressif/arduino-esp32/issues/2537
 		}
-		WiFi.begin(config.getWifiSsid().c_str(), config.getWifiPassword().c_str());
+		if(strlen(wifi.hostname) > 0) {
+			WiFi.setHostname(wifi.hostname);
+		}
+		WiFi.begin(wifi.ssid, wifi.psk);
 		yield();
+	}
+}
+
+void swapWifiMode() {
+	if(!hw.ledOn(LED_YELLOW)) {
+		hw.ledOn(LED_INTERNAL);
+	}
+	WiFiMode_t mode = WiFi.getMode();
+	if(dnsServer != NULL) {
+		dnsServer->stop();
+	}
+	WiFi.disconnect(true);
+	WiFi.softAPdisconnect(true);
+	WiFi.mode(WIFI_OFF);
+	yield();
+
+	if (mode != WIFI_AP || !config.hasConfig()) {
+		debugI("Swapping to AP mode");
+		WiFi.softAP("VillaventBridge");
+		WiFi.mode(WIFI_AP);
+
+		if(dnsServer == NULL) {
+			dnsServer = new DNSServer();
+		}
+		dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
+		dnsServer->start(53, "*", WiFi.softAPIP());
+	} else {
+		debugI("Swapping to STA mode");
+		if(dnsServer != NULL) {
+			delete dnsServer;
+			dnsServer = NULL;
+		}
+		WiFi_connect();
+	}
+	delay(500);
+	if(!hw.ledOff(LED_YELLOW)) {
+		hw.ledOff(LED_INTERNAL);
 	}
 }
 
 unsigned long lastMqttRetry = -10000;
 void MQTT_connect() {
-	if(config.getMqttHost().isEmpty()) {
-		if(debugger) debugger->println("No MQTT config");
+    if(mqttConfig != NULL)
+        delete mqttConfig;
+    mqttConfig = new MqttConfig();
+
+	if(!config.getMqttConfig(*mqttConfig) || strlen(mqttConfig->host) == 0) {
+		debugW("No MQTT config");
+		mqttEnabled = false;
+		ws.setMqttEnabled(false);
+		config.ackMqttChange();
 		return;
 	}
-	if(millis() - lastMqttRetry < 5000) {
+	if(millis() - lastMqttRetry < (mqtt.lastError() == 0 || config.isMqttChanged() ? 5000 : 30000)) {
 		yield();
 		return;
 	}
 	lastMqttRetry = millis();
-	if(debugger) {
-		debugger->print("Connecting to MQTT: ");
-		debugger->print(config.getMqttHost());
-		debugger->print(", port: ");
-		debugger->print(config.getMqttPort());
-		debugger->println();
-	}
+
+	mqttEnabled = true;
+	ws.setMqttEnabled(true);
+
+    debugI("Disconnecting MQTT before connecting");
 
 	mqtt.disconnect();
 	yield();
 
-	mqtt.begin(config.getMqttHost().c_str(), config.getMqttPort(), *client);
+	WiFiClientSecure *secureClient = NULL;
+	Client *client = NULL;
+	if(mqttConfig->ssl) {
+		debugI("MQTT SSL is configured");
+
+		secureClient = new WiFiClientSecure();
+
+		if(SPIFFS.begin()) {
+			char *ca = NULL;
+			char *cert = NULL;
+			char *key = NULL;
+
+			if(SPIFFS.exists(FILE_MQTT_CA)) {
+				debugI("Found MQTT CA file");
+				File file = SPIFFS.open(FILE_MQTT_CA, "r");
+				secureClient->loadCACert(file, file.size());
+			}
+			if(SPIFFS.exists(FILE_MQTT_CERT)) {
+				debugI("Found MQTT certificate file");
+				File file = SPIFFS.open(FILE_MQTT_CERT, "r");
+				secureClient->loadCertificate(file, file.size());
+			}
+			if(SPIFFS.exists(FILE_MQTT_KEY)) {
+				debugI("Found MQTT key file");
+				File file = SPIFFS.open(FILE_MQTT_KEY, "r");
+				secureClient->loadPrivateKey(file, file.size());
+			}
+			SPIFFS.end();
+		}
+		client = secureClient;
+	} else {
+		client = new WiFiClient();
+	}
+
+    debugI("Connecting to MQTT %s:%d", mqttConfig->host, mqttConfig->port);
+	mqtt.begin(mqttConfig->host, mqttConfig->port, *client);
 
 	// Connect to a unsecure or secure MQTT server
-	if ((config.getMqttUser().isEmpty() && mqtt.connect(config.getMqttClientId().c_str())) ||
-		(!config.getMqttUser().isEmpty() && mqtt.connect(config.getMqttClientId().c_str(), config.getMqttUser().c_str(), config.getMqttPassword().c_str()))) {
-		if (debugger) debugger->println("\nSuccessfully connected to MQTT!");
+	if ((strlen(mqttConfig->username) == 0 && mqtt.connect(mqttConfig->clientId)) ||
+		(strlen(mqttConfig->username) > 0 && mqtt.connect(mqttConfig->clientId, mqttConfig->username, mqttConfig->password))) {
+		debugI("Successfully connected to MQTT!");
 		config.ackMqttChange();
 
 		// Subscribe to the chosen MQTT topic, if set in configuration
-		if (!config.getMqttSubscribeTopic().isEmpty()) {
+		if (strlen(mqttConfig->subscribeTopic) > 0) {
             mqtt.onMessage(mqttMessageReceived);
-			mqtt.subscribe(config.getMqttSubscribeTopic() + "/#");
-			if (debugger) debugger->printf("  Subscribing to [%s]\r\n", config.getMqttSubscribeTopic().c_str());
+			mqtt.subscribe(String(mqttConfig->subscribeTopic) + "/#");
+			debugI("  Subscribing to [%s]\r\n", mqttConfig->subscribeTopic);
 		}
 	} else {
-		if (debugger) {
-			debugger->print(" failed, ");
-			debugger->println(" trying again in 5 seconds");
-		}
+        debugE("Failed to connect to MQTT");
 	}
 	yield();
 }
 
-bool initDone = false;
-bool wifiConnected = false;
-int regindex = 0;
-void loop() {
-    if(WiFi.getMode() == WIFI_AP) {
-        dnsServer.processNextRequest();
-    } else {
-        // TODO Ensure wifi connected
-    }
+int buttonTimer = 0;
+bool buttonActive = false;
+unsigned long longPressTime = 5000;
+bool longPressActive = false;
 
-    if(config.hasConfig()) {
+bool wifiConnected = false;
+
+bool initDone = false;
+int regindex = 0;
+
+unsigned long lastSuccessfulRead = 0;
+unsigned long lastFailedRead = 0;
+unsigned long lastErrorBlink = 0; 
+int lastError = 0;
+
+void loop() {
+	unsigned long now = millis();
+	if(gpio.apPin != 0xFF) {
+		if (digitalRead(gpio.apPin) == LOW) {
+			if (buttonActive == false) {
+				buttonActive = true;
+				buttonTimer = now;
+			}
+
+			if ((now - buttonTimer > longPressTime) && (longPressActive == false)) {
+				longPressActive = true;
+				swapWifiMode();
+			}
+		} else {
+			if (buttonActive == true) {
+				if (longPressActive == true) {
+					longPressActive = false;
+				} else {
+					// Single press action
+				}
+				buttonActive = false;
+			}
+		}
+	}
+
+	// Only do normal stuff if we're not booted as AP
+	if (WiFi.getMode() != WIFI_AP) {
 		if (WiFi.status() != WL_CONNECTED) {
 			wifiConnected = false;
 			WiFi_connect();
 		} else {
 			if(!wifiConnected) {
 				wifiConnected = true;
-				if(debugger) {
-					debugger->println("Successfully connected to WiFi!");
-					debugger->println(WiFi.localIP());
+				
+				WiFiConfig wifi;
+				if(config.getWiFiConfig(wifi)) {
+                    debugI("Successfully connected to WiFi!");
+                    debugI("IP:  %s", WiFi.localIP().toString().c_str());
+                    debugI("GW:  %s", WiFi.gatewayIP().toString().c_str());
+                    debugI("DNS: %s", WiFi.dnsIP().toString().c_str());
+
+					if(strlen(wifi.hostname) > 0 && wifi.mdns) {
+						debugD("mDNS is enabled, using host: %s", wifi.hostname);
+						if(MDNS.begin(wifi.hostname)) {
+							MDNS.addService("http", "tcp", 80);
+						} else {
+							debugE("Failed to set up mDNS!");
+						}
+					}
 				}
 			}
-			if (!config.getMqttHost().isEmpty()) {
+			if(config.isNtpChanged()) {
+				NtpConfig ntp;
+				if(config.getNtpConfig(ntp)) {
+					configTime(ntp.offset*10, ntp.summerOffset*10, ntp.enable ? ntp.server : "");
+					sntp_servermode_dhcp(ntp.enable && ntp.dhcp ? 1 : 0);
+					ntpEnabled = ntp.enable;
+
+                    // TODO
+					//if(tz != NULL) delete tz;
+					//TimeChangeRule std = {"STD", Last, Sun, Oct, 3, ntp.offset / 6};
+					//TimeChangeRule dst = {"DST", Last, Sun, Mar, 2, (ntp.offset + ntp.summerOffset) / 6};
+					//tz = new Timezone(dst, std);
+					//ws.setTimezone(tz);
+				}
+
+				config.ackNtpChange();
+			}
+
+			if(now > 10000 && now - lastErrorBlink > 3000) {
+				errorBlink();
+			}
+
+			if (mqttEnabled || config.isMqttChanged()) {
 				mqtt.loop();
 				delay(10); // Needed to preserve power. After adding this, the voltage is super smooth on a HAN powered device
 				if(!mqtt.connected() || config.isMqttChanged()) {
 					MQTT_connect();
-                    initDone = true;
 				}
 			} else if(mqtt.connected()) {
 				mqtt.disconnect();
 			}
+            ws.loop();
 		}
+	} else {
+		if(dnsServer != NULL) {
+			dnsServer->processNextRequest();
+		}
+		// Continously flash the LED when AP mode
+		if (now / 50 % 64 == 0) {
+			if(!hw.ledBlink(LED_YELLOW, 1)) {
+				hw.ledBlink(LED_INTERNAL, 1);
+			}
+		}
+	}
 
-        if(initDone && config.getUnitBaud() > 0 && config.getUnitId() > 0) {
-            if(currentBaud != config.getUnitBaud() || currentId != config.getUnitId()) {
-                if(debugger) {
-                    debugger->print("Connecting to ventilation unit at baud ");
-                    debugger->println(config.getUnitBaud());
-                }
-                Serial2.begin(config.getUnitBaud());   
-                node.begin(config.getUnitId(), Serial2);
-                node.preTransmission(preTransmission);
-                node.postTransmission(postTransmission);
+    if(config.isSystemChanged()) {
+        config.getSystemConfig(sysConfig);
+        config.ackSystemChange();
 
-                currentId = config.getUnitId();
-                currentBaud = config.getUnitBaud();
-            }
-
-            unsigned long now = millis();
-            if(regindex == registers.size()) {
-                regindex = 0;
-            }
-            while(regindex < registers.size()) {
-                Register* reg = registers.get(regindex);
-                regindex++;
-                if(reg->needsUpdate(now)) {
-                    if(reg->isCoil()) {
-                        if(readCoil(reg)) {
-                            reg->setLastUpdated(now);
-                        }
-                    } else {
-                        if(readRegister(reg)) {
-                            reg->setLastUpdated(now);
-                        }
-                    }
-                    break;
-                }
-            }
-            yield();
+        if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0) {
+            debugI("Connecting to ventilation unit at baud %d", sysConfig.unitBaud);
+            Serial2.begin(sysConfig.unitBaud);   
+            node.begin(sysConfig.unitId, Serial2);
+            node.preTransmission(preTransmission);
+            node.postTransmission(postTransmission);
         }
+    }
+
+    if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0 && (lastFailedRead == 0 || now-lastFailedRead > 30000)) {
+        if(regindex == registers.size()) {
+            regindex = 0;
+        }
+        while(regindex < registers.size()) {
+            #if SLAVE_MODE
+                break;
+            #endif
+
+            Register* reg = registers.get(regindex);
+            regindex++;
+            if(reg->needsUpdate(now)) {
+                if(reg->isCoil()) {
+                    if(readCoil(reg)) {
+                        reg->setLastUpdated(now);
+                    }
+                } else {
+                    if(readRegister(reg)) {
+                        reg->setLastUpdated(now);
+                    }
+                }
+                break;
+            }
+        }
+        yield();
     }
 
     delay(1); // Allow modem sleep
 }
 
-boolean readRegister(Register *reg) {
-    if(false) {
-        debugger->print("Updating register ");
-        debugger->print(reg->getName());
-        debugger->print(" starting at ");
-        debugger->print(reg->getStart());
-        debugger->print(" with length ");
-        debugger->println(reg->getLength());
-    }
+void errorBlink() {
+	if(lastError == 3)
+		lastError = 0;
+	lastErrorBlink = millis();
+	for(;lastError < 3;lastError++) {
+		switch(lastError) {
+			case 0:
+				if(lastErrorBlink - lastSuccessfulRead > 30000) {
+					hw.ledBlink(LED_RED, 1); // If no message received on Modbus in 30 sec, blink once
+					return;
+				}
+				break;
+			case 1:
+				if(mqttEnabled && mqtt.lastError() != 0) {
+					hw.ledBlink(LED_RED, 2); // If MQTT error, blink twice
+					return;
+				}
+				break;
+			case 2:
+				if(WiFi.getMode() != WIFI_AP && WiFi.status() != WL_CONNECTED) {
+					hw.ledBlink(LED_RED, 3); // If WiFi not connected, blink three times
+					return;
+				}
+				break;
+		}
+	}
+}
 
+boolean readRegister(Register *reg) {
+    if(modbusBusy)
+        return false;
+    modbusBusy = true;
     node.clearResponseBuffer();
     node.clearTransmitBuffer();
 
@@ -311,18 +565,20 @@ boolean readRegister(Register *reg) {
                 }
             }
         }
+        lastSuccessfulRead = millis();
+        modbusBusy = false;
         return true;
     }
-    if(debugger) debugger->println(" - failed");
+    lastFailedRead = millis();
+    debugE(" - failed");
+    modbusBusy = false;
     return false;
 }
 
 boolean readCoil(Register *reg) {
-    if(false) {
-        debugger->print("Updating coil ");
-        debugger->println(reg->getName());
-    }
-
+    if(modbusBusy)
+        return false;
+    modbusBusy = true;
     node.clearResponseBuffer();
     node.clearTransmitBuffer();
 
@@ -348,53 +604,89 @@ boolean readCoil(Register *reg) {
                 raw = raw >> 1;
             }
         }
+        lastSuccessfulRead = millis();
+        modbusBusy = false;
         return true;
     }
-    if(debugger) debugger->println(" - failed");
+    lastFailedRead = millis();
+    debugE(" - failed");
+    modbusBusy = false;
     return false;
 }
 
 void mqttMessageReceived(String &topic, String &payload) {
-    if(debugger) {
-        debugger->print("Received message for topic ");
-        debugger->println(topic);
-    }
+    debugI("Received message for topic ");
+    debugI(topic.c_str());
 
-    if(!topic.startsWith(config.getMqttSubscribeTopic()))
+    if(mqttConfig == NULL)
         return;
-
-    String trimmed = topic.substring(config.getMqttSubscribeTopic().length()+1);
-    if(debugger) {
-        debugger->print(" stripped away base topic gives us: ");
-        debugger->println(trimmed);
-    }
 
     int address = 0;
     int current = 0;
     Register* updateReg = NULL;
-    for(int i = 0; i < registers.size(); i++) {
-        Register* reg = registers.get(i);
-        address = reg->getRegisterAddress(trimmed);
-        if(address != REG_INVALID) {
-            current = reg->getValue(address);
-            if(reg->isWriteable(address) && reg->setFormattedValue(address, payload)) {
-                updateReg = reg;
+    if(topic.toInt() > 0) {
+        address = topic.toInt();
+        for(int i = 0; i < registers.size(); i++) {
+            Register* reg = registers.get(i);
+            if(address > reg->getStart() && address < reg->getStart()+reg->getLength()) {
+                current = reg->getValue(address);
+                if(reg->isWriteable(address) && reg->setFormattedValue(address, payload)) {
+                    updateReg = reg;
+                }
+                #if SLAVE_MODE
+                    reg->setFormattedValue(address, payload);
+                #endif
+                break;
             }
-            break;
+        }
+    } else {
+        if(!mqtt.connected() || !topic.startsWith(mqttConfig->subscribeTopic)) return;
+        String trimmed = topic.substring(strlen(mqttConfig->subscribeTopic) + 1);
+        debugD(" stripped away base topic gives us: ");
+        debugD(trimmed.c_str());
+        debugD(" payload is: ");
+        debugD(payload.c_str());
+
+        for(int i = 0; i < registers.size(); i++) {
+            Register* reg = registers.get(i);
+            address = reg->getRegisterAddress(trimmed);
+            if(address != REG_INVALID) {
+                current = reg->getValue(address);
+                if(reg->isWriteable(address) && reg->setFormattedValue(address, payload)) {
+                    updateReg = reg;
+                }
+                #if SLAVE_MODE
+                    reg->setFormattedValue(address, payload);
+                #endif
+                break;
+            }
         }
     }
+
+    #if SLAVE_MODE
+        return;
+    #endif
     if(updateReg != NULL) {
+        unsigned long now = millis();
+
         int update = updateReg->getValue(address);
         String* name = updateReg->getRegisterName(address);
         String formatted = updateReg->getFormattedValue(address);
-        for(int i = 0; i < 3; i++) {
-            uint8_t result = updateReg->isCoil() ? node.writeSingleCoil(address-1, update) : node.writeSingleRegister(address-1, update);
-            if(result == node.ku8MBSuccess) {
-                sendMqttMessage(name, formatted);
-                return;
+        if(lastFailedRead == 0 || now-lastFailedRead > 30000) {
+            for(int i = 0; i < 3; i++) {
+                if(!modbusBusy) {
+                    modbusBusy = true;
+                    uint8_t result = updateReg->isCoil() ? node.writeSingleCoil(address-1, update) : node.writeSingleRegister(address-1, update);
+                    if(result == node.ku8MBSuccess) {
+                        sendMqttMessage(name, formatted);
+                        return;
+                    }
+                    modbusBusy = false;
+                    delay(1000);
+                }
             }
         }
-        if(debugger) debugger->println("Failed to update register / coil");
+        debugE("Failed to update register / coil");
         updateReg->setValue(address, current);
         formatted = updateReg->getFormattedValue(address);
         sendMqttMessage(name, formatted);
@@ -402,13 +694,10 @@ void mqttMessageReceived(String &topic, String &payload) {
 }
 
 void sendMqttMessage(String* name, String &payload) {
-    String topic = config.getMqttPublishTopic() + "/" + *name;
-    if(debugger) {
-        debugger->print("Sending message to ");
-        debugger->print(topic);
-        debugger->print(" with payload ");
-        debugger->println(payload);
-    }
+    if(!mqtt.connected() || mqttConfig == NULL || strlen(mqttConfig->publishTopic) == 0) return;
+
+    String topic = String(mqttConfig->publishTopic) + "/" + *name;
+    debugD("Sending message to %s with payload %s", topic, payload);
     mqtt.publish(topic.c_str(), payload.c_str());
     mqtt.loop();
     yield();

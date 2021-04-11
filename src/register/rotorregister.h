@@ -8,7 +8,7 @@
 
 class RotorRegister : public Register {
     public:
-        RotorRegister() : Register("rotor", 350, 2, 200, false) {
+        RotorRegister() : Register("rotor", 350, 2, 500, false) {
             addRegister(REG_ROTOR_STATE, "rotor/state", PERM_READ_ONLY);
             addRegister(REG_ROTOR_RELAY_ACTIVE, "rotor/relay", PERM_READ_ONLY);
         };

@@ -1,55 +1,193 @@
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Villavent</title>
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <link rel="stylesheet" type="text/css" href="boot.css"/>
-    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.4.1/css/bootstrap.min.css"/>
-    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
-    <style>
-        .bg-gray-dark {
-            background-color: var(--gray-dark);
-        }
-    </style>
-</head>
-<body class="bg-light">
-    <main role="main" class="container">
-        <div class="d-flex align-items-center p-3 my-2 text-white-50 bg-gray-dark rounded shadow">
-            <div class="lh-100">
-                <h5 class="mb-0 text-white lh-100">Villavent VTR300 <small>v5.5.0 (boot v2.0.6)</small></h5>
-                <small>villavent-han v1.0.0</small>
-            </div>
+<div id="indexHtml" class="bg-white rounded shadow p-1">
+    <div class="row">
+        <div class="col-lg-3 col-md-4 col-4">
+            <div class="text-center"><span class="v501">{vm}</span></div>
         </div>
-        <div class="row">
-            <div class="col-md-3">
-                <h6 class="border-bottom border-gray pb-2 mb-4">Control and readings</h6>
-                <div class="row">
-                    <div class="col-6">
-                        <div class="input-group">
-                            <input type="number" value="22" max="22" min="12" class="form-control"/>
-                            <div class="input-group-append">
-                                <div class="input-group-text">°C</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <select class="form-control">
-                            <option value="4">Auto</option>
-                            <option value="3">High</option>
-                            <option value="2">Normal</option>
-                            <option value="1">Low</option>
-                            <option value="0">Off</option>
-                        </select>
-                    </div>
+        <div class="col-lg-3 col-md-4 col-8">
+            <div class="text-center">v<span class="v502"></span>.<span class="v503"></span>.<span class="v504"></span> / v<span class="v505"></span>.<span class="v506"></span>.<span class="v507"></span></div>
+        </div>
+        <div class="col-lg-3 col-md-4 col-6">
+            <div class="text-center">Up <span class="vu">{cs}</span></div>
+        </div>
+        <div class="col-lg-3 col-md-4 col-6">
+            <div class="text-center">WiFi RSSI: <span class="vr">{rssi}</span>dBm</div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-3 mt-3">
+        <div class="bg-white rounded shadow p-3">
+            <h5>Temperatures</h5>
+            <div class="row">
+                <div class="col-6">Setpoint</div>
+                <div class="col-6 text-right">
+                    <input name="207" type="number" class="form-control form-control-sm v207" min="12" max="22"/>
                 </div>
             </div>
-            <div class="col-md-3">
-                <h6 class="border-bottom border-gray pb-2 mb-4">Configuration</h6>
+            <div class="row">
+                <div class="col-6">Intake</div>
+                <div class="col-6 text-right"><span class="v218" data-format="%.1f">-</span> &deg;C</div>
             </div>
-            <div class="col-md-3"></div>
-            <div class="col-md-3"></div>
+            <div class="row">
+                <div class="col-6">Supply</div>
+                <div class="col-6 text-right"><span class="v214" data-format="%.1f">-</span> &deg;C</div>
+            </div>
+            <div class="row">
+                <div class="col-6">Protect</div>
+                <div class="col-6 text-right"><span class="v217" data-format="%.1f">-</span> &deg;C</div>
+            </div>
+            <div class="row">
+                <div class="col-6">Extract</div>
+                <div class="col-6 text-right"><span class="v215" data-format="%.1f">-</span> &deg;C</div>
+            </div>
+            <div class="row">
+                <div class="col-6">Exhaust</div>
+                <div class="col-6 text-right"><span class="v216" data-format="%.1f">-</span> &deg;C</div>
+            </div>
         </div>
-    </main>
-</body>
-</html>
+    </div>
+    <div class="col-3 mt-3">
+        <div class="bg-white rounded shadow p-3">
+            <h5>Fan control</h5>
+            <div class="row">
+                <div class="col-4">Supply</div>
+                <div class="col-8 text-right">
+                    <select name="101" class="form-control form-control-sm v101">
+                        <option value=""></option>
+                        <option value="4">Auto</option>
+                        <option value="3">Max</option>
+                        <option value="2">Normal</option>
+                        <option value="1">Low</option>
+                        <option value="0">Off</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-4">Supply</div>
+                <div class="col-8 text-right"><span class="v111" data-format="%d">-</span> RPM</div>
+            </div>
+            <div class="row">
+                <div class="col-4">Extract</div>
+                <div class="col-8 text-right"><span class="v112" data-format="%d">-</span> RPM</div>
+            </div>
+            <div class="row">
+                <div class="col-4">Rotor</div>
+                <div class="col-8 text-right"><span class="v351"></span></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 mt-3">
+        <div class="bg-white rounded shadow p-3">
+            <h5>Digital inputs</h5>
+            <div class="row">
+                <div class="col-3">Input 1</div>
+                <div class="col-3">
+                    <label><input type="radio" name="11201" value="ON" class="v11201"/> ON</label>
+                    <label><input type="radio" name="11201" value="OFF" class="v11201"/> OFF</label>
+                </div>
+                <div class="col-3">
+                    <select name="704" class="form-control form-control-sm v704">
+                        <option value=""></option>
+                        <option value="3">Max</option>
+                        <option value="2">Normal</option>
+                        <option value="1">Low</option>
+                        <option value="0">Off</option>
+                    </select>
+                </div>
+                <div class="col-3">
+                    <select name="705" class="form-control form-control-sm v705">
+                        <option value=""></option>
+                        <option value="3">Max</option>
+                        <option value="2">Normal</option>
+                        <option value="1">Low</option>
+                        <option value="0">Off</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-3">Input 2</div>
+                <div class="col-3">
+                    <label><input type="radio" name="11202" value="ON" class="v11202"/> ON</label>
+                    <label><input type="radio" name="11202" value="OFF" class="v11202"/> OFF</label>
+                </div>
+                <div class="col-3">
+                    <select name="706" class="form-control form-control-sm v706">
+                        <option value=""></option>
+                        <option value="3">Max</option>
+                        <option value="2">Normal</option>
+                        <option value="1">Low</option>
+                        <option value="0">Off</option>
+                    </select>
+                </div>
+                <div class="col-3">
+                    <select name="707" class="form-control form-control-sm v707">
+                        <option value=""></option>
+                        <option value="3">Max</option>
+                        <option value="2">Normal</option>
+                        <option value="1">Low</option>
+                        <option value="0">Off</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-3">Input 3</div>
+                <div class="col-3">
+                    <label><input type="radio" name="11203" value="ON" class="v11203"/> ON</label>
+                    <label><input type="radio" name="11203" value="OFF" class="v11203"/> OFF</label>
+                </div>
+                <div class="col-3">
+                    <select name="708" class="form-control form-control-sm v708">
+                        <option value=""></option>
+                        <option value="3">Max</option>
+                        <option value="2">Normal</option>
+                        <option value="1">Low</option>
+                        <option value="0">Off</option>
+                    </select>
+                </div>
+                <div class="col-3">
+                    <select name="709" class="form-control form-control-sm v709">
+                        <option value=""></option>
+                        <option value="3">Max</option>
+                        <option value="2">Normal</option>
+                        <option value="1">Low</option>
+                        <option value="0">Off</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-3">Extended run</div>
+                <div class="col-3">
+                    <label><input type="radio" name="11205" value="ON" class="v11205"/> ON</label>
+                    <label><input type="radio" name="11205" value="OFF" class="v11205"/> OFF</label>
+                </div>
+                <div class="col-3">
+                    <input name="702" type="number" class="form-control form-control-sm v702" min="1" max="60"/>
+                </div>
+                <div class="col-3">
+                    <select name="703" class="form-control form-control-sm v703">
+                        <option value=""></option>
+                        <option value="3">Max</option>
+                        <option value="2">Normal</option>
+                        <option value="1">Low</option>
+                        <option value="0">Off</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-3">Stop heat</div>
+                <div class="col-3">
+                    <label><input type="radio" name="11204" value="ON" class="v11204"/> ON</label>
+                    <label><input type="radio" name="11204" value="OFF" class="v11204"/> OFF</label>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-3">Away</div>
+                <div class="col-3">
+                    <label><input type="radio" name="11207" value="ON" class="v11207"/> ON</label>
+                    <label><input type="radio" name="11207" value="OFF" class="v11207"/> OFF</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

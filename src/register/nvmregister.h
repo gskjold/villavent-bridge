@@ -7,7 +7,7 @@
 
 class NvmRegister : public Register {
     public:
-        NvmRegister() : Register("nvm", 548, 1, 60000, false) {
+        NvmRegister() : Register("nvm", 548, 1, 3600000, false) {
             addRegister(REG_STORE_NVM, "nvm/store", PERM_WRITE_ONLY);
         };
 

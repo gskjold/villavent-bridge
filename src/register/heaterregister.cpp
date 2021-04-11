@@ -62,12 +62,27 @@ boolean HeaterRegister::setFormattedValue(int address, String &value) {
             }
             return setValue(REG_HC_PREHEATER_TYPE, preheater);
         }
+        #if SLAVE_MODE
+        case REG_HC_TEMP_LVL1:
+        case REG_HC_TEMP_LVL2:
+        case REG_HC_TEMP_LVL3:
+        case REG_HC_TEMP_LVL4:
+        case REG_HC_TEMP_LVL5:
+        case REG_HC_TEMP_IN1:
+        case REG_HC_TEMP_IN2:
+        case REG_HC_TEMP_IN3:
+        case REG_HC_TEMP_IN4:
+        case REG_HC_TEMP_IN5:
+            return setValue(address, (int) (value.toDouble()*10));
+        #endif
     }
     return false;
 }
 
 String HeaterRegister::getFormattedValue(int address) {
     int value = getValue(address);
+    if(value == VAL_INVALID)
+        return "";
     switch (address) {
         case REG_HC_TEMP_LVL:
             if(value > 0)
@@ -86,10 +101,7 @@ String HeaterRegister::getFormattedValue(int address) {
         case REG_HC_TEMP_IN3:
         case REG_HC_TEMP_IN4:
         case REG_HC_TEMP_IN5:
-            if(value != -404) // Unused value
                 return String(((double) value) / 10, 1);
-            else 
-                return "";
     }
     return String(value);
 }
