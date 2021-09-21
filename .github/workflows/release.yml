@@ -55,15 +55,6 @@ jobs:
         release_name: Release ${{ github.ref }}
         draft: false
         prerelease: false
-    - name: Upload esp8266 binary to release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: .pio/build/esp8266/firmware.bin
-        asset_name: ams2mqtt-esp8266-${{ steps.release_tag.outputs.tag }}.bin
-        asset_content_type: application/octet-stream
     - name: Upload esp32 binary to release
       uses: actions/upload-release-asset@v1
       env:
@@ -71,7 +62,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: .pio/build/esp32/firmware.bin
-        asset_name: ams2mqtt-esp32-${{ steps.release_tag.outputs.tag }}.bin
+        asset_name: villavent2mqtt-esp32-${{ steps.release_tag.outputs.tag }}.bin
         asset_content_type: application/octet-stream
     - name: Upload esp32 partitions to release
       uses: actions/upload-release-asset@v1
@@ -80,5 +71,5 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: .pio/build/esp32/partitions.bin
-        asset_name: ams2mqtt-esp32-partitions-${{ steps.release_tag.outputs.tag }}.bin
+        asset_name: villavent2mqtt-esp32-partitions-${{ steps.release_tag.outputs.tag }}.bin
         asset_content_type: application/octet-stream
