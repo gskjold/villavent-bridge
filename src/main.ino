@@ -464,6 +464,8 @@ void loop() {
 		if(dnsServer != NULL) {
 			dnsServer->processNextRequest();
 		}
+        ws.loop();
+
 		// Continously flash the LED when AP mode
 		if (now / 50 % 64 == 0) {
 			if(!hw.ledBlink(LED_YELLOW, 1)) {
