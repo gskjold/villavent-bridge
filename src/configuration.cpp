@@ -80,7 +80,7 @@ void configuration::clearWifi(WiFiConfig& config) {
 	#else
 		chipId = ESP.getChipId();
 	#endif
-	strcpy(config.hostname, (String("ams-") + String(chipId, HEX)).c_str());
+	strcpy(config.hostname, (String("villavent-") + String(chipId, HEX)).c_str());
 	config.mdns = true;
 }
 
