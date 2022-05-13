@@ -232,7 +232,8 @@ void WiFi_connect() {
 			dns2.fromString(wifi.dns2);
 			WiFi.config(ip, gw, sn, dns1, dns2);
 		} else {
-			WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE); // Workaround to make DHCP hostname work for ESP32. See: https://github.com/espressif/arduino-esp32/issues/2537
+            // Does not work anymore...
+			//WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE); // Workaround to make DHCP hostname work for ESP32. See: https://github.com/espressif/arduino-esp32/issues/2537
 		}
 		if(strlen(wifi.hostname) > 0) {
 			WiFi.setHostname(wifi.hostname);
@@ -487,7 +488,7 @@ void loop() {
         }
     }
 
-    if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0 && (lastFailedRead == 0 || now-lastFailedRead > 30000)) {
+    if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0 && (lastFailedRead == 0 || now-lastFailedRead > 5000)) {
         if(regindex == registers.size()) {
             regindex = 0;
         }
@@ -681,10 +682,11 @@ void mqttMessageReceived(String &topic, String &payload) {
                     uint8_t result = updateReg->isCoil() ? node.writeSingleCoil(address-1, update) : node.writeSingleRegister(address-1, update);
                     if(result == node.ku8MBSuccess) {
                         sendMqttMessage(name, formatted);
+                        modbusBusy = false;
                         return;
                     }
-                    modbusBusy = false;
                     delay(1000);
+                    modbusBusy = false;
                 }
             }
         }
