@@ -748,37 +748,61 @@ void InternalWebServer::writeJson() {
 
 size_t InternalWebServer::printD(const char* text)
 {
-	if (debugger) debugger->printf("[DEBUG] %s\n", text);
+	if (debugger) 
+	  return debugger->printf("[DEBUG] %s\n", text);
+	else
+  	  return 0;
 }
 
 size_t InternalWebServer::printI(const char* text)
 {
-	if (debugger) debugger->printf("[INFO] %s\n", text);
+	if (debugger) 
+	  return debugger->printf("[INFO] %s\n", text);
+	else 
+	  return 0;
 }
 
 size_t InternalWebServer::printW(const char* text)
 {
-	if (debugger) debugger->printf("[WARNING] %s\n", text);
+	if (debugger) 
+	  return debugger->printf("[WARNING] %s\n", text);
+	else
+	  return 0;
 }
 
 size_t InternalWebServer::printE(const char* text)
 {
-	if (debugger) debugger->printf("[ERROR] %s\n", text);
+	if (debugger) 
+	  return debugger->printf("[ERROR] %s\n", text);
+	else
+	  return 0;
 }
 
 size_t InternalWebServer::print(const char* text)
 {
-	if (debugger) debugger->print(text);
+	if (debugger) 
+	  return debugger->print(text);
+	else
+	  return 0;
 }
 size_t InternalWebServer::println(const char* text)
 {
-	if (debugger) debugger->println(text);
+	if (debugger) return 
+	  debugger->println(text);
+	else
+	  return 0;
 }
 size_t InternalWebServer::print(const Printable& data)
 {
-	if (debugger) debugger->print(data);
+	if (debugger) 
+	  return debugger->print(data);
+	else
+	  return 0;
 }
 size_t InternalWebServer::println(const Printable& data)
 {
-	if (debugger) debugger->println(data);
+	if (debugger)
+	  return debugger->println(data);
+	else
+	  return 0;
 }
