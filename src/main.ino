@@ -65,14 +65,22 @@ InternalWebServer ws(&hw);
 
 void preTransmission()
 {
+  //debugD( "Write start");
   digitalWrite(MAX485_RE_NEG, 1);
   digitalWrite(MAX485_DE, 1);
 }
 
 void postTransmission()
 {
-  digitalWrite(MAX485_RE_NEG, 0);
+//  Serial2.flush(); // already done in driver.
+  //delay( 3 );
+  // delayMicroseconds(120);
+  //delayMicroseconds(120);
+
   digitalWrite(MAX485_DE, 0);
+  digitalWrite(MAX485_RE_NEG, 0);
+
+  // debugD("End of write");
 }
 
 TaskHandle_t Task1;
@@ -230,10 +238,14 @@ void WiFi_connect() {
 			sn.fromString(wifi.subnet);
 			dns1.fromString(wifi.dns1);
 			dns2.fromString(wifi.dns2);
+
 			WiFi.config(ip, gw, sn, dns1, dns2);
+
+            debugI("Using configured IP: %s", wifi.ip );
 		} else {
-            // Does not work anymore...
-			//WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE); // Workaround to make DHCP hostname work for ESP32. See: https://github.com/espressif/arduino-esp32/issues/2537
+            debugI("No configured IP, DHCP?" );
+
+			// WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE); // Workaround to make DHCP hostname work for ESP32. See: https://github.com/espressif/arduino-esp32/issues/2537
 		}
 		if(strlen(wifi.hostname) > 0) {
 			WiFi.setHostname(wifi.hostname);
@@ -257,7 +269,7 @@ void swapWifiMode() {
 	yield();
 
 	if (mode != WIFI_AP || !config.hasConfig()) {
-		debugI("Swapping to AP mode");
+		debugI("Swapping to AP mode, IP %s", WiFi.softAPIP().toString().c_str() );
 		WiFi.softAP("VillaventBridge");
 		WiFi.mode(WIFI_AP);
 
@@ -375,6 +387,12 @@ int regindex = 0;
 unsigned long lastSuccessfulRead = 0;
 unsigned long lastFailedRead = 0;
 unsigned long lastErrorBlink = 0; 
+unsigned long numSuccessfulReads = 0;
+unsigned long numSuccessfulWrites = 0;
+unsigned long numFailedReads = 0;
+
+const unsigned long int bantimeOnError = 5000;
+
 int lastError = 0;
 
 void loop() {
@@ -401,6 +419,11 @@ void loop() {
 			}
 		}
 	}
+ 
+    if ( now % 3000 == 0 )
+    {
+       debugI("IP:  %s", WiFi.localIP().toString().c_str());
+    }
 
 	// Only do normal stuff if we're not booted as AP
 	if (WiFi.getMode() != WIFI_AP) {
@@ -488,7 +511,7 @@ void loop() {
         }
     }
 
-    if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0 && (lastFailedRead == 0 || now-lastFailedRead > 5000)) {
+    if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0 && (lastFailedRead == 0 || now-lastFailedRead > bantimeOnError)) {
         if(regindex == registers.size()) {
             regindex = 0;
         }
@@ -555,8 +578,15 @@ boolean readRegister(Register *reg) {
 
     int start = reg->getStart();
     int len = reg->getLength();
+    unsigned long int start_t = millis();
     uint8_t result = node.readHoldingRegisters(start, len);
+ 
+    debugD("%06u: rd-reg  %5d,L=%2d %4s %4dms/d%4dms [%3u] r%u/w%u/e%u", start_t, start,len, result == node.ku8MBSuccess ? "OK":"FAIL", 
+                millis()-start_t, start_t - lastFailedRead,
+                result, numSuccessfulReads, numSuccessfulWrites, numFailedReads );
+
     if(result == node.ku8MBSuccess) {
+        numSuccessfulReads++;
         for(int i = 0; i< len; i++) {
             int address = start + i + 1;
             String* name = reg->getRegisterName(address);
@@ -570,10 +600,12 @@ boolean readRegister(Register *reg) {
         }
         lastSuccessfulRead = millis();
         modbusBusy = false;
+
+ 
         return true;
     }
     lastFailedRead = millis();
-    debugE(" - failed");
+    numFailedReads++;
     modbusBusy = false;
     return false;
 }
@@ -587,8 +619,16 @@ boolean readCoil(Register *reg) {
 
     int start = reg->getStart();
     int len = reg->getLength();
+
+    unsigned long int start_t = millis();
+
     uint8_t result = node.readCoils(start, len);
+
+    debugD("%06u: rd-coil %5d,L=%2d %4s %4dms/d%4dms [%3u] r%u/w%u/e%u", start_t, start,len, result == node.ku8MBSuccess ? "OK":"FAIL", 
+            millis()-start_t,start_t - lastFailedRead, result, numSuccessfulReads, numSuccessfulWrites, numFailedReads );
+
     if(result == node.ku8MBSuccess) {
+        numSuccessfulReads++;
         for(int i = 0; i < len;) {
             uint16_t raw = node.getResponseBuffer(i/16);
             while(i < len) {
@@ -612,7 +652,7 @@ boolean readCoil(Register *reg) {
         return true;
     }
     lastFailedRead = millis();
-    debugE(" - failed");
+    numFailedReads++;
     modbusBusy = false;
     return false;
 }
@@ -675,22 +715,30 @@ void mqttMessageReceived(String &topic, String &payload) {
         int update = updateReg->getValue(address);
         String* name = updateReg->getRegisterName(address);
         String formatted = updateReg->getFormattedValue(address);
-        if(lastFailedRead == 0 || now-lastFailedRead > 30000) {
+        if(lastFailedRead == 0 || now-lastFailedRead > bantimeOnError) {
             for(int i = 0; i < 3; i++) {
                 if(!modbusBusy) {
                     modbusBusy = true;
-                    uint8_t result = updateReg->isCoil() ? node.writeSingleCoil(address-1, update) : node.writeSingleRegister(address-1, update);
+                    unsigned long start_t = millis();
+                    bool is_coil = updateReg->isCoil();
+                    
+                    uint8_t result = is_coil ? node.writeSingleCoil(address-1, update) : node.writeSingleRegister(address-1, update);
+                    
+                    debugE("%06u: wr-%-4s %5d,L=%2d %4s %4dms [%3u] r%u/w%u", start_t, is_coil?"coil":"reg", address-1,1, result == node.ku8MBSuccess ? "OK":"FAIL", millis()-start_t, result, numSuccessfulReads, numSuccessfulWrites );
+
+                    modbusBusy = false;
+
                     if(result == node.ku8MBSuccess) {
+                        numSuccessfulWrites++;
                         sendMqttMessage(name, formatted);
-                        modbusBusy = false;
                         return;
                     }
-                    delay(1000);
                     modbusBusy = false;
+                    delay(1000);
                 }
             }
         }
-        debugE("Failed to update register / coil");
+        debugE("Failed to update register / coil due to read error banning");
         updateReg->setValue(address, current);
         formatted = updateReg->getFormattedValue(address);
         sendMqttMessage(name, formatted);
@@ -701,7 +749,7 @@ void sendMqttMessage(String* name, String &payload) {
     if(!mqtt.connected() || mqttConfig == NULL || strlen(mqttConfig->publishTopic) == 0) return;
 
     String topic = String(mqttConfig->publishTopic) + "/" + *name;
-    debugD("Sending message to %s with payload %s", topic, payload);
+    debugD("MQTT publish to %s with payload %s", topic.c_str(), payload.c_str());
     mqtt.publish(topic.c_str(), payload.c_str());
     mqtt.loop();
     yield();
