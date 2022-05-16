@@ -182,8 +182,8 @@ void InternalWebServer::handleSave() {
 		NtpConfig ntp {
 			server.hasArg("n") && server.arg("n") == "true",
 			server.hasArg("nd") && server.arg("nd") == "true",
-			server.arg("o").toInt() / 10,
-			server.arg("so").toInt() / 10
+			(int16_t)(server.arg("o").toInt() / 10),
+			(int16_t)(server.arg("so").toInt() / 10)
 		};
 		strcpy(ntp.server, server.arg("ns").c_str());
 		config->setNtpConfig(ntp);
@@ -610,9 +610,9 @@ void InternalWebServer::handleSetup() {
 		server.send (302, "text/plain", "");
 	} else {
 		SystemConfig sys { 
-			server.arg("board").toInt(), 
-			server.arg("unitBaud").toInt(), 
-			server.arg("unitId").toInt() 
+			(uint8_t)server.arg("board").toInt(), 
+			(uint16_t)server.arg("unitBaud").toInt(), 
+			(uint8_t)server.arg("unitId").toInt() 
 		};
 
 		config->clear();
@@ -722,11 +722,11 @@ void InternalWebServer::dataJson() {
 		int len = reg->getLength();
         for(int i = 0; i< len; i++) {
             int address = start + i + 1;
-            String* name = reg->getRegisterName(address);
-            if(*name != "") {
-				String formatted = reg->getFormattedValue(address);
-				snprintf_P(json, sizeof(json), "\"%d\":\"%s\",", address, formatted);
-				server.sendContent(json, strlen(json));
+            const String &name = reg->getRegisterName(address);
+            if(name != "") {
+							String formatted = reg->getFormattedValue(address);
+							snprintf_P(json, sizeof(json), "\"%d\":\"%s\",", address, formatted);
+							server.sendContent(json, strlen(json));
             }
         }
 	}

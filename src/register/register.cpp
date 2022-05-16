@@ -1,64 +1,70 @@
 #include "register.h"
 
 String Register::getName() {
-    return this->name;
+    return m_name;
 }
 
 int Register::getStart() {
-    return this->start;
+    return m_start;
 }
 
 int Register::getLength() {
-    return this->length;
+    return m_length;
 }
 
 bool Register::isCoil() {
-    return this->coil;
+    return m_coil;
 }
 
+int Register::addr2Index( int address, const char *source )
+{
+  int idx = address-m_start-1;
+  if(idx < 0 || idx >= m_length) {
+    Serial.print( source );
+    Serial.print(" Incorrect index ");
+    Serial.print(idx);
+    Serial.print(" for address ");
+    Serial.println(address);
+    return VAL_INVALID;
+  }
+  return idx;
+}
+
+
 int Register::getValue(int address) {
-    int idx = address-start-1;
-    if(idx < 0 || idx >= length) {
-        Serial.print("getValue Incorrect index ");
-        Serial.print(idx);
-        Serial.print(" for address ");
-        Serial.println(address);
-        return VAL_INVALID;
-    }
-    return this->values[idx];
+    int idx = addr2Index( address, "getValue");
+    if( idx == VAL_INVALID )
+      return VAL_INVALID;
+    return m_single_regs[idx].m_value;
 }
 
 boolean Register::setValue(int address, int value) {
-    int idx = address-start-1;
-    if(idx < 0 || idx >= length) {
-        Serial.print("setValue Incorrect index ");
-        Serial.print(idx);
-        Serial.print(" for address ");
-        Serial.println(address);
-        return false;
-    }
+    int idx = addr2Index( address, "setValue");
+    if( idx == VAL_INVALID )
+      return false;
     int current = getValue(address);
-    this->values[idx] = value;
+    m_single_regs[idx].m_value = value;
     return current != value || !isReadable(address);
 }
 
 void Register::addRegister(int address, String name, byte permission) {
-    int idx = address-start-1;
-    if(idx < 0 || idx >= length) {
-        Serial.print("addRegister Incorrect index ");
-        Serial.print(idx);
-        Serial.print(" for address ");
-        Serial.println(address);
-        return;
-    }
-    this->names[idx] = name;
-    this->perms[idx] = permission;
-    this->values[idx] = isReadable(address) ? VAL_INVALID : 0;
+   int idx = addr2Index( address, "addRegister");
+    if( idx == VAL_INVALID )
+      return;
+    SingleReg &r = m_single_regs[idx];
+    r.m_name = name;
+    r.m_perm = permission;
+    r.m_value = isReadable( address ) ? VAL_INVALID : 0;
+    r.m_flags = 0; // TODO add flags?
 }
 
-String* Register::getRegisterName(int address) {
-    int idx = address-start-1;
-    return &(this->names[idx]);
+const String &Register::getRegisterName(int address) {
+    int idx = addr2Index( address, "getRegisterName");
+    if( idx == VAL_INVALID )
+    {
+      return m_empty_string;
+    }
+    return (m_single_regs[idx].m_name);
 }
 
 String Register::getFormattedValue(int address) {
@@ -69,24 +75,24 @@ String Register::getFormattedValue(int address) {
 }
 
 int Register::getRegisterAddress(String &name) {
-    for(int i=0; i<length; i++) {
-        String registerName = names[i];
-        if(registerName == name) {
-            return start + i + 1;
+    for(int i=0; i<m_length; i++) {
+        if ( m_single_regs[i].m_name == name )
+        {
+          return m_start + i + 1;
         }
     }
     return REG_INVALID;
 }
 
 bool Register::isReadable(int address) {
-    int idx = address-start-1;
-    byte perm = this->perms[idx];
+    int idx = address-m_start-1;
+    byte perm = m_single_regs[idx].m_perm;
     return perm == PERM_FULL || perm == PERM_READ_ONLY;
 }
 
 bool Register::isWriteable(int address) {
-    int idx = address-start-1;
-    byte perm = this->perms[idx];
+    int idx = address-m_start-1; // TODO Add range check
+    byte perm = m_single_regs[idx].m_perm;
     return perm == PERM_FULL || perm == PERM_WRITE_ONLY;
 }
 
@@ -98,9 +104,9 @@ boolean Register::setFormattedValue(int address, String &value) {
 }
 
 boolean Register::needsUpdate(unsigned long millis) {
-    return lastUpdated == 0 || (millis - lastUpdated) > interval;
+    return m_last_updated == 0 || (millis - m_last_updated) > m_interval;
 }
 
 void Register::setLastUpdated(unsigned long millis) {
-    this->lastUpdated = millis;
+    m_last_updated = millis;
 }

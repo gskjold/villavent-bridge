@@ -12,20 +12,37 @@
 #define PERM_WRITE_ONLY 2
 
 class Register {
+    
+    enum Flags
+    {
+       FLG_VALUE_UPDATED = 0x01,
+       FLG_PENDING_WRITE = 0x02
+    };
+
+
+    // Context info for single registers
+    class SingleReg
+    {
+       SingleReg() : m_value(VAL_INVALID), m_pending_set_value(VAL_INVALID),m_perm(0),m_flags(0){}
+    private:
+      String     m_name;
+      int32_t    m_value;
+      int32_t    m_pending_set_value;
+      uint8_t    m_perm;
+      uint8_t    m_flags;    
+
+      friend class Register;
+    };
+
 public:
     Register(String name, int start, int length, int interval, bool coil) {
-        this->name = name;
-        this->start = start;
-        this->length = length;
-        this->interval = interval;
-        this->coil = coil;
-        this->values = new int[length];
-        this->names = new String[length];
-        this->perms = new byte[length];
-        for(int i=0;i<length;i++) {
-            this->values[i] = VAL_INVALID;
-            this->perms[i] = 0;
-        }
+        m_name = name;
+        m_start = start;
+        m_length = length;
+        m_interval = interval;
+        m_coil = coil;
+        m_single_regs = new SingleReg[length]; 
+        m_last_updated = 0;
     }
     String getName();
     int getStart();
@@ -36,7 +53,7 @@ public:
     boolean setValue(int address, int value);
 
     void addRegister(int address, String name, byte permission=PERM_FULL);
-    String* getRegisterName(int address);
+    const String &getRegisterName(int address);
     int getRegisterAddress(String &name);
     bool isReadable(int address);
     bool isWriteable(int address);
@@ -48,13 +65,15 @@ public:
     void setLastUpdated(unsigned long millis);
 
 private:
-    String name;
-    int start, length, interval;
-    bool coil;
-    int *values;
-    String *names;
-    byte *perms;
-    unsigned long lastUpdated = 0;
+    int addr2Index( int address, const char *source );
+
+private:
+    String          m_name;
+    int32_t         m_start, m_length, m_interval;
+    bool            m_coil;
+    SingleReg      *m_single_regs;
+    uint32_t        m_last_updated;
+    String          m_empty_string;
 };
 
 #endif

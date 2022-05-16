@@ -589,8 +589,8 @@ boolean readRegister(Register *reg) {
         numSuccessfulReads++;
         for(int i = 0; i< len; i++) {
             int address = start + i + 1;
-            String* name = reg->getRegisterName(address);
-            if(reg->isReadable(address) && *name != "") {
+            const String &name = reg->getRegisterName(address);
+            if(reg->isReadable(address) && name != "") {
                 short update = (short) node.getResponseBuffer(i);
                 if(reg->setValue(address, (int) update)) {
                     String formatted = reg->getFormattedValue(address);
@@ -633,8 +633,8 @@ boolean readCoil(Register *reg) {
             uint16_t raw = node.getResponseBuffer(i/16);
             while(i < len) {
                 int address = start + i + 1;
-                String* name = reg->getRegisterName(address);
-                if(reg->isReadable(address) && *name != "") {
+                const String &name = reg->getRegisterName(address);
+                if(reg->isReadable(address) && name != "") {
                     int update = raw & 0x1;
                     if(reg->setValue(address, update)) {
                         String formatted = reg->getFormattedValue(address);
@@ -713,7 +713,7 @@ void mqttMessageReceived(String &topic, String &payload) {
         unsigned long now = millis();
 
         int update = updateReg->getValue(address);
-        String* name = updateReg->getRegisterName(address);
+        const String &name = updateReg->getRegisterName(address);
         String formatted = updateReg->getFormattedValue(address);
         if(lastFailedRead == 0 || now-lastFailedRead > bantimeOnError) {
             for(int i = 0; i < 3; i++) {
@@ -745,10 +745,10 @@ void mqttMessageReceived(String &topic, String &payload) {
     }
 }
 
-void sendMqttMessage(String* name, String &payload) {
+void sendMqttMessage(const String &name, String &payload) {
     if(!mqtt.connected() || mqttConfig == NULL || strlen(mqttConfig->publishTopic) == 0) return;
 
-    String topic = String(mqttConfig->publishTopic) + "/" + *name;
+    String topic = String(mqttConfig->publishTopic) + "/" + name;
     debugD("MQTT publish to %s with payload %s", topic.c_str(), payload.c_str());
     mqtt.publish(topic.c_str(), payload.c_str());
     mqtt.loop();
