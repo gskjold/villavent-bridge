@@ -23,7 +23,7 @@ class InputCoil : public Register {
             addRegister(COIL_DI7, "input/away", PERM_WRITE_ONLY);
         };
 
-        boolean setFormattedValue(int address, String &value);
+        boolean setFormattedValue(int address, const String &value, bool setpending=false);
         String getFormattedValue(int address);
 };
 

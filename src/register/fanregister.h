@@ -86,7 +86,7 @@ class FanRegister : public Register {
         };
 
         String getFormattedValue(int address);
-        boolean setFormattedValue(int address, String &value);
+        boolean setFormattedValue(int address, const String &value, bool setpending=false);
 };
 
 #endif

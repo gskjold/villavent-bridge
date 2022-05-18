@@ -11,7 +11,7 @@ class NvmRegister : public Register {
             addRegister(REG_STORE_NVM, "nvm/store", PERM_WRITE_ONLY);
         };
 
-        boolean setFormattedValue(int address, String &value);
+        boolean setFormattedValue(int address, const String &value, bool setpending=false);
 };
 
 #endif

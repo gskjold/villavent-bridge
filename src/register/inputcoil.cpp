@@ -1,6 +1,7 @@
 #include "inputcoil.h"
 
-boolean InputCoil::setFormattedValue(int address, String &value) {
+boolean InputCoil::setFormattedValue(int address, const String &value, bool setpending) {
+    String val_lower = value; val_lower.toLowerCase();
     switch(address) {
         case COIL_DI1:
         case COIL_DI2:
@@ -8,11 +9,10 @@ boolean InputCoil::setFormattedValue(int address, String &value) {
         case COIL_DI4:
         case COIL_DI5:
         case COIL_DI7:
-            value.toLowerCase();
-            if(value == "0" || value == "off" || value == "false") {
-                return setValue(address, 0);
-            } else if(value == "1" || value == "on" || value == "true") {
-                return setValue(address, 1);
+            if(val_lower == "0" || val_lower == "off" || val_lower == "false") {
+                return setpending ? setNewPendingWriteValue(address, 0) :  setValue(address, 0);
+            } else if(val_lower == "1" || val_lower == "on" || val_lower == "true") {
+                return setpending ? setNewPendingWriteValue(address, 1) : setValue(address, 1);
             } else {
                 return false;
             }

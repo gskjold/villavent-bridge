@@ -1,12 +1,12 @@
 #include "inputregister.h"
 
-boolean InputRegister::setFormattedValue(int address, String &value) {
+boolean InputRegister::setFormattedValue(int address, const String &value, bool setpending) {
     int val;
     switch(address) {
         case REG_DI_EXT_RUNNING_M:
             val = value.toInt();
             if(val >= 0) {
-                return setValue(REG_DI_EXT_RUNNING_M, val);
+                return setpending ? setNewPendingWriteValue(REG_DI_EXT_RUNNING_M, val) : setValue(REG_DI_EXT_RUNNING_M, val);
             }
             break;
         case REG_DI_EXT_RUNNING_SPEED_LVL:
@@ -18,7 +18,7 @@ boolean InputRegister::setFormattedValue(int address, String &value) {
         case REG_DI3_EF_LVL:
             val = value.toInt();
             if(val >= 0 && val <= 3) {
-                return setValue(address, val);
+                return setpending ? setNewPendingWriteValue(address, val) : setValue(address, val);
             }
             break;
     }

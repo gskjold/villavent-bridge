@@ -27,7 +27,7 @@ class InputRegister : public Register {
             addRegister(REG_DI3_EF_LVL, "input/3/ef");
         };
 
-        boolean setFormattedValue(int address, String &value);
+        boolean setFormattedValue(int address, const String &value, bool setpending=false);
 };
 
 #endif

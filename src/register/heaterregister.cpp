@@ -1,6 +1,6 @@
 #include "heaterregister.h"
 
-boolean HeaterRegister::setFormattedValue(int address, String &value) {
+boolean HeaterRegister::setFormattedValue(int address, const String &value, bool setpending) {
     switch(address) {
         case REG_HC_HEATER_TYPE:
         {
@@ -16,7 +16,7 @@ boolean HeaterRegister::setFormattedValue(int address, String &value) {
             } else {
                 return false;
             }
-            return setValue(REG_HC_HEATER_TYPE, heater);
+            return setpending ? setNewPendingWriteValue(REG_HC_HEATER_TYPE, heater) : setValue(REG_HC_HEATER_TYPE, heater);
         }
         case REG_HC_COOLER_TYPE:
         {
@@ -28,15 +28,15 @@ boolean HeaterRegister::setFormattedValue(int address, String &value) {
             } else {
                 return false;
             }
-            return setValue(REG_HC_COOLER_TYPE, cooler);
+            return setpending ? setNewPendingWriteValue(REG_HC_COOLER_TYPE, cooler) : setValue(REG_HC_COOLER_TYPE, cooler);
         }
         case REG_HC_FPS_LEVEL:
         {
             double fps = value.toDouble();
             if(fps >= 7.0 && fps <= 12.0) {
-                return setValue(REG_HC_FPS_LEVEL, ((int) fps) * 10);
+                return setpending ? setNewPendingWriteValue(REG_HC_FPS_LEVEL, ((int) fps) * 10) : setValue(REG_HC_FPS_LEVEL, ((int) fps) * 10);
             } else if(fps >= 70 && fps <= 120) {
-                return setValue(REG_HC_FPS_LEVEL, (int) fps);
+                return setpending ? setNewPendingWriteValue(REG_HC_FPS_LEVEL, (int) fps) : setValue(REG_HC_FPS_LEVEL, (int) fps);
             }
             break;
         }
@@ -44,9 +44,9 @@ boolean HeaterRegister::setFormattedValue(int address, String &value) {
         {
             int lvl = value.toInt();
             if(lvl >= 12 && lvl <= 22) {
-                return setValue(REG_HC_TEMP_LVL, lvl-11);
+                return setpending ? setNewPendingWriteValue(REG_HC_TEMP_LVL, lvl-11) : setValue(REG_HC_TEMP_LVL, lvl-11);
             } else if(lvl < 12 && lvl >= 0) {
-                return setValue(REG_HC_TEMP_LVL, lvl);
+                return setpending ? setNewPendingWriteValue(REG_HC_TEMP_LVL, lvl) : setValue(REG_HC_TEMP_LVL, lvl);
             }
             break;
         }
@@ -60,7 +60,7 @@ boolean HeaterRegister::setFormattedValue(int address, String &value) {
             } else {
                 return false;
             }
-            return setValue(REG_HC_PREHEATER_TYPE, preheater);
+            return setpending ? setNewPendingWriteValue(REG_HC_PREHEATER_TYPE, preheater) : setValue(REG_HC_PREHEATER_TYPE, preheater);
         }
         #if SLAVE_MODE
         case REG_HC_TEMP_LVL1:

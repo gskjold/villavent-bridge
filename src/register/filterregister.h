@@ -13,7 +13,7 @@ class FilterRegister : public Register {
             addRegister(REG_FILTER_DAYS, "filter/age");
         };
 
-        boolean setFormattedValue(int address, String &value);
+        boolean setFormattedValue(int address, const String &value, bool setpending=false);
 };
 
 #endif

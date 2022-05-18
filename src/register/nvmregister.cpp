@@ -1,11 +1,11 @@
 #include "nvmregister.h"
 
-boolean NvmRegister::setFormattedValue(int address, String &value) {
+boolean NvmRegister::setFormattedValue(int address, const String &value, bool setpending) {
     switch(address) {
         case REG_STORE_NVM:
-            value.toLowerCase();
-            if(value == "1" || value == "true" || value == "165") {
-                return setValue(REG_STORE_NVM, 165);
+            String lowvalue(value); lowvalue.toLowerCase();
+            if(lowvalue == "1" || lowvalue == "true" || lowvalue == "165") {
+                return setpending ? setNewPendingWriteValue(REG_STORE_NVM, 165) : setValue(REG_STORE_NVM, 165);
             }
             break;
     }
