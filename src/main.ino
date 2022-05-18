@@ -1,24 +1,11 @@
 #include "Arduino.h"
-#include <LinkedList.h>
 #include "Update.h"
 
 #include "main.h"
 #include "debugger.h"
-#include "register/fanregister.h"
-#include "register/heaterregister.h"
-#include "register/tempsensorstatecoil.h"
-#include "register/rotorregister.h"
-#include "register/systemregister.h"
-#include "register/nvmregister.h"
-#include "register/clockregister.h"
-#include "register/filterregister.h"
-#include "register/inputregister.h"
-#include "register/inputcoil.h"
-#include "register/pcupbcoil.h"
-#include "register/alarmcoil.h"
-#include "register/alarmregister.h"
 
 #include <ModbusMaster.h>
+
 
 #include "configuration.h"
 #include <WiFi.h>
@@ -31,10 +18,12 @@
 #include "web/InternalWebServer.h"
 #include "HwTools.h"
 
-ModbusMaster node;
-bool modbusBusy = false;
+#include "registermanager.h"
+#include "osapi.h"
 
-LinkedList<Register*> registers = LinkedList<Register*>();
+ModbusMaster    Modbus;
+RegisterManager RegisterManager( Modbus );
+
 
 HwTools hw;
 configuration config;
@@ -53,6 +42,7 @@ GpioConfig gpio = {
     0
 };
 DNSServer* dnsServer = NULL;
+
 
 WiFiClient *client;
 MQTTClient mqtt(128);
@@ -104,9 +94,22 @@ void setup() {
   digitalWrite(MAX485_RE_NEG, 0);
   digitalWrite(MAX485_DE, 0);
 
-  debugI("Booting");
+  debugI("Booting (Main thread priority %d core %d)", OSAPI_Task::GetTaskPriority(), OSAPI_Task::GetCurrentCoreId() );
+
   hw.setup(&gpio);
   
+ 
+
+//  for ( uint8_t cpu=0; cpu<2; cpu ++ )
+//  {
+//    TaskHandle_t t = xTaskGetIdleTaskHandleForCPU( cpu );
+//    if ( t )
+//    {
+
+//    }
+
+//  }
+
   if(SPIFFS.begin(true)) {
     bool flashed = false;
     if(SPIFFS.exists(FILE_FIRMWARE)) {
@@ -144,19 +147,7 @@ void setup() {
   }
 
   debugI("Adding registers");
-  registers.add(new FanRegister());
-  registers.add(new HeaterRegister());
-  registers.add(new TempSensorStateCoil());
-  registers.add(new RotorRegister());
-  registers.add(new SystemRegister());
-  registers.add(new NvmRegister());
-  registers.add(new ClockRegister());
-  registers.add(new FilterRegister());
-  registers.add(new InputRegister());
-  registers.add(new InputCoil());
-  registers.add(new PcuPbCoil());
-  registers.add(new AlarmCoil());
-  registers.add(new AlarmRegister());
+  RegisterManager.addRegisters();
 
   WiFi.disconnect(true);
   WiFi.softAPdisconnect(true);
@@ -193,7 +184,7 @@ void setup() {
   #endif
 
   debugI("Setting up web server");
-  ws.setup(&config, &mqtt, &registers, debugger);
+  ws.setup(&config, &mqtt, &RegisterManager, debugger);
   ws.setMessageHandler(mqttMessageReceived);
 
 //  xTaskCreatePinnedToCore(
@@ -204,6 +195,10 @@ void setup() {
 //      -1,  /* Priority of the task */
 //      &Task1,  /* Task handle. */
 //      0); /* Core where the task should run */
+
+   debugI("Starting register manager thread");
+
+   RegisterManager.start(); // Start the register manager thread once.
 
 }
 
@@ -374,6 +369,53 @@ void MQTT_connect() {
 	yield();
 }
 
+
+/************************************************************************
+// Visitor passed through registry manager to send MQTT messages for 
+// updated registry entries. Visitor set up to visit only single registers
+// that are updated.
+/************************************************************************/
+class MQTTUpdateVisitor : public RegisterManager::Visitor
+{
+    uint32_t m_messages_sent; // num MQTT messages sent.
+public:
+    MQTTUpdateVisitor() : Visitor(0,FLG_VISIT_REG_SINGLE|FLG_VISIT_UPDATED), m_messages_sent(0) {}
+    //~MQTTUpdateVisitor();
+
+    uint32_t numMessagesSent() const { return m_messages_sent; }
+    void resetNumMessagesSent() { m_messages_sent=0; }
+
+    // Implement in your visitor class and return negative to
+    // interrupt traverse.
+    virtual int32_t visit( Register &reg ) { return 0; };
+    virtual int32_t visit( int32_t address, Register &reg );;
+
+};
+
+// Called to visit updated nodes only, no need to check specifically
+int32_t MQTTUpdateVisitor::visit( int32_t address, Register &reg)
+{
+    const String &name = reg.getRegisterName( address );
+    String formatted = reg.getFormattedValue( address );
+
+    debugI("visit %s", name.c_str());
+
+    sendMqttMessage(name, formatted);
+
+    //TODO : could send fail and we need to handle that ?
+
+    // Clear updated flag - i.e signal that change has been handled.
+    reg.confirmUpdate( address );
+
+    m_messages_sent++;
+
+    if ( m_messages_sent > 2 )
+      return -1; // break traverse in accept.
+    else
+      return 0;
+}
+
+
 int buttonTimer = 0;
 bool buttonActive = false;
 unsigned long longPressTime = 5000;
@@ -384,16 +426,15 @@ bool wifiConnected = false;
 bool initDone = false;
 int regindex = 0;
 
-unsigned long lastSuccessfulRead = 0;
-unsigned long lastFailedRead = 0;
 unsigned long lastErrorBlink = 0; 
-unsigned long numSuccessfulReads = 0;
-unsigned long numSuccessfulWrites = 0;
-unsigned long numFailedReads = 0;
-
-const unsigned long int bantimeOnError = 5000;
 
 int lastError = 0;
+ 
+// VIsitor passed to RegistryManager to send MQTT updates for changed 
+// registers.
+MQTTUpdateVisitor MqttUpdateVisitor;
+
+
 
 void loop() {
 	unsigned long now = millis();
@@ -422,7 +463,7 @@ void loop() {
  
     if ( now % 3000 == 0 )
     {
-       debugI("IP:  %s", WiFi.localIP().toString().c_str());
+       debugI("IP:  %s, Main Core %d", WiFi.localIP().toString().c_str(), OSAPI_Task::GetCurrentCoreId());
     }
 
 	// Only do normal stuff if we're not booted as AP
@@ -502,41 +543,39 @@ void loop() {
         config.getSystemConfig(sysConfig);
         config.ackSystemChange();
 
-        if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0) {
+        // Disable modbus accesses.
+        RegisterManager.disable();
+
+        if ( sysConfig.unitBaud > 0 && sysConfig.unitId > 0)  {
             debugI("Connecting to ventilation unit at baud %d", sysConfig.unitBaud);
-            Serial2.begin(sysConfig.unitBaud);   
-            node.begin(sysConfig.unitId, Serial2);
-            node.preTransmission(preTransmission);
-            node.postTransmission(postTransmission);
+            Serial2.begin( sysConfig.unitBaud );
+            Modbus.begin( sysConfig.unitId, Serial2 );
+            Modbus.preTransmission( preTransmission );
+            Modbus.postTransmission( postTransmission );
+
+            // enable background registry keeper and modbus accessor.
+            RegisterManager.enable();
         }
+ 
     }
 
-    if(sysConfig.unitBaud > 0 && sysConfig.unitId > 0 && (lastFailedRead == 0 || now-lastFailedRead > bantimeOnError)) {
-        if(regindex == registers.size()) {
-            regindex = 0;
-        }
-        while(regindex < registers.size()) {
-            #if SLAVE_MODE
-                break;
-            #endif
+    if( sysConfig.unitBaud > 0 && sysConfig.unitId > 0 ) 
+    {
+       // Pass MQTT updater through updated registers to send messages.
+       // block at most 300ms to wait for this.
+       MqttUpdateVisitor.resetNumMessagesSent(); // clear stop-counter.
+       
+       uint32_t tstart = millis();
+       int32_t cnt = RegisterManager.accept( MqttUpdateVisitor, 300 );
 
-            Register* reg = registers.get(regindex);
-            regindex++;
-            if(reg->needsUpdate(now)) {
-                if(reg->isCoil()) {
-                    if(readCoil(reg)) {
-                        reg->setLastUpdated(now);
-                    }
-                } else {
-                    if(readRegister(reg)) {
-                        reg->setLastUpdated(now);
-                    }
-                }
-                break;
-            }
-        }
-        yield();
+       if ( MqttUpdateVisitor.numMessagesSent()>0 )
+         debugI("MQTT checked %d, %d updates sent  - %dms - core %d", cnt, MqttUpdateVisitor.numMessagesSent(), millis()-tstart, OSAPI_Task::GetCurrentCoreId() );
+     
     }
+
+
+
+
 
     delay(1); // Allow modem sleep
 }
@@ -548,7 +587,7 @@ void errorBlink() {
 	for(;lastError < 3;lastError++) {
 		switch(lastError) {
 			case 0:
-				if(lastErrorBlink - lastSuccessfulRead > 30000) {
+				if(lastErrorBlink - RegisterManager.lastSuccessfulRead() > 30000) {
 					hw.ledBlink(LED_RED, 1); // If no message received on Modbus in 30 sec, blink once
 					return;
 				}
@@ -569,180 +608,39 @@ void errorBlink() {
 	}
 }
 
-boolean readRegister(Register *reg) {
-    if(modbusBusy)
-        return false;
-    modbusBusy = true;
-    node.clearResponseBuffer();
-    node.clearTransmitBuffer();
-
-    int start = reg->getStart();
-    int len = reg->getLength();
-    unsigned long int start_t = millis();
-    uint8_t result = node.readHoldingRegisters(start, len);
- 
-    debugD("%06u: rd-reg  %5d,L=%2d %4s %4dms/d%4dms [%3u] r%u/w%u/e%u", start_t, start,len, result == node.ku8MBSuccess ? "OK":"FAIL", 
-                millis()-start_t, start_t - lastFailedRead,
-                result, numSuccessfulReads, numSuccessfulWrites, numFailedReads );
-
-    if(result == node.ku8MBSuccess) {
-        numSuccessfulReads++;
-        for(int i = 0; i< len; i++) {
-            int address = start + i + 1;
-            const String &name = reg->getRegisterName(address);
-            if(reg->isReadable(address) && name != "") {
-                short update = (short) node.getResponseBuffer(i);
-                if(reg->setValue(address, (int) update)) {
-                    String formatted = reg->getFormattedValue(address);
-                    sendMqttMessage(name, formatted);
-                }
-            }
-        }
-        lastSuccessfulRead = millis();
-        modbusBusy = false;
-
- 
-        return true;
-    }
-    lastFailedRead = millis();
-    numFailedReads++;
-    modbusBusy = false;
-    return false;
-}
-
-boolean readCoil(Register *reg) {
-    if(modbusBusy)
-        return false;
-    modbusBusy = true;
-    node.clearResponseBuffer();
-    node.clearTransmitBuffer();
-
-    int start = reg->getStart();
-    int len = reg->getLength();
-
-    unsigned long int start_t = millis();
-
-    uint8_t result = node.readCoils(start, len);
-
-    debugD("%06u: rd-coil %5d,L=%2d %4s %4dms/d%4dms [%3u] r%u/w%u/e%u", start_t, start,len, result == node.ku8MBSuccess ? "OK":"FAIL", 
-            millis()-start_t,start_t - lastFailedRead, result, numSuccessfulReads, numSuccessfulWrites, numFailedReads );
-
-    if(result == node.ku8MBSuccess) {
-        numSuccessfulReads++;
-        for(int i = 0; i < len;) {
-            uint16_t raw = node.getResponseBuffer(i/16);
-            while(i < len) {
-                int address = start + i + 1;
-                const String &name = reg->getRegisterName(address);
-                if(reg->isReadable(address) && name != "") {
-                    int update = raw & 0x1;
-                    if(reg->setValue(address, update)) {
-                        String formatted = reg->getFormattedValue(address);
-                        sendMqttMessage(name, formatted);
-                    }
-                }
-                i++;
-                if(i%16 == 0)
-                    break;
-                raw = raw >> 1;
-            }
-        }
-        lastSuccessfulRead = millis();
-        modbusBusy = false;
-        return true;
-    }
-    lastFailedRead = millis();
-    numFailedReads++;
-    modbusBusy = false;
-    return false;
-}
-
 void mqttMessageReceived(String &topic, String &payload) {
-    debugI("Received message for topic ");
-    debugI(topic.c_str());
-
+    debugI("Received message for topic %s", topic.c_str() );
+    
     if(mqttConfig == NULL)
         return;
 
     int address = 0;
     int current = 0;
     Register* updateReg = NULL;
-    if(topic.toInt() > 0) {
+
+    int32_t setres = 0;
+
+    if (topic.toInt() > 0) 
+    {
         address = topic.toInt();
-        for(int i = 0; i < registers.size(); i++) {
-            Register* reg = registers.get(i);
-            if(address > reg->getStart() && address < reg->getStart()+reg->getLength()) {
-                current = reg->getValue(address);
-                if(reg->isWriteable(address) && reg->setFormattedValue(address, payload)) {
-                    updateReg = reg;
-                }
-                #if SLAVE_MODE
-                    reg->setFormattedValue(address, payload);
-                #endif
-                break;
-            }
-        }
-    } else {
+
+        setres = RegisterManager.setPendingWriteByAddress( address, payload );
+    }
+    else
+    {
         if(!mqtt.connected() || !topic.startsWith(mqttConfig->subscribeTopic)) return;
         String trimmed = topic.substring(strlen(mqttConfig->subscribeTopic) + 1);
-        debugD(" stripped away base topic gives us: ");
-        debugD(trimmed.c_str());
-        debugD(" payload is: ");
-        debugD(payload.c_str());
+        debugD(" stripped away base topic gives us: %s", trimmed.c_str() );
+        debugD(" payload is: %s", payload.c_str() );
 
-        for(int i = 0; i < registers.size(); i++) {
-            Register* reg = registers.get(i);
-            address = reg->getRegisterAddress(trimmed);
-            if(address != REG_INVALID) {
-                current = reg->getValue(address);
-                if(reg->isWriteable(address) && reg->setFormattedValue(address, payload)) {
-                    updateReg = reg;
-                }
-                #if SLAVE_MODE
-                    reg->setFormattedValue(address, payload);
-                #endif
-                break;
-            }
-        }
+        setres = RegisterManager.setPendingWriteByName( trimmed, payload );
     }
 
-    #if SLAVE_MODE
-        return;
-    #endif
-    if(updateReg != NULL) {
-        unsigned long now = millis();
+    debugD(" pending set = %d", setres );
 
-        int update = updateReg->getValue(address);
-        const String &name = updateReg->getRegisterName(address);
-        String formatted = updateReg->getFormattedValue(address);
-        if(lastFailedRead == 0 || now-lastFailedRead > bantimeOnError) {
-            for(int i = 0; i < 3; i++) {
-                if(!modbusBusy) {
-                    modbusBusy = true;
-                    unsigned long start_t = millis();
-                    bool is_coil = updateReg->isCoil();
-                    
-                    uint8_t result = is_coil ? node.writeSingleCoil(address-1, update) : node.writeSingleRegister(address-1, update);
-                    
-                    debugE("%06u: wr-%-4s %5d,L=%2d %4s %4dms [%3u] r%u/w%u", start_t, is_coil?"coil":"reg", address-1,1, result == node.ku8MBSuccess ? "OK":"FAIL", millis()-start_t, result, numSuccessfulReads, numSuccessfulWrites );
 
-                    modbusBusy = false;
 
-                    if(result == node.ku8MBSuccess) {
-                        numSuccessfulWrites++;
-                        sendMqttMessage(name, formatted);
-                        return;
-                    }
-                    modbusBusy = false;
-                    delay(1000);
-                }
-            }
-        }
-        debugE("Failed to update register / coil due to read error banning");
-        updateReg->setValue(address, current);
-        formatted = updateReg->getFormattedValue(address);
-        sendMqttMessage(name, formatted);
-    }
+
 }
 
 void sendMqttMessage(const String &name, String &payload) {
