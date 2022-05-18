@@ -19,15 +19,19 @@
 #include "root/application_js.h"
 #include "root/modbus_html.h"
 
-InternalWebServer::InternalWebServer(HwTools* hw) {
+#include "debugger.h"
+
+InternalWebServer::InternalWebServer(HwTools* hw) 
+ : m_register_manager_p(0)
+{
 	this->hw = hw;
 }
 
-void InternalWebServer::setup(configuration* config, MQTTClient* mqtt, LinkedList<Register*>* registers, Stream* debugger) {
-    this->config = config;
-    this->debugger = debugger;
+void InternalWebServer::setup(configuration* config, MQTTClient* mqtt, RegisterManager *register_man, Stream* debugger) {
+  this->config = config;
+  this->debugger = debugger;
 	this->mqtt = mqtt;
-	this->registers = registers;
+	this->m_register_manager_p = register_man;
 
 	char jsuri[32];
 	snprintf(jsuri, 32, "/application-%s.js", VERSION);
@@ -71,6 +75,10 @@ void InternalWebServer::setup(configuration* config, MQTTClient* mqtt, LinkedLis
 	config->getMqttConfig(mqttConfig);
 	mqttEnabled = strlen(mqttConfig.host) > 0;
 }
+
+
+
+
 
 void InternalWebServer::setMqttEnabled(bool enabled) {
 	mqttEnabled = enabled;
@@ -695,6 +703,30 @@ void InternalWebServer::applicationJs() {
 	server.send_P(200, "application/javascript", APPLICATION_JS);
 }
 
+// Called on every single register
+int32_t InternalWebServer::RegisterVisitor::visit( int32_t address, Register &reg)
+{
+    const String &name = reg.getRegisterName( address );
+
+		//debugI("WEB visit '%s' address %d", name.c_str(), address);
+
+	  if ( name=="" )
+		  return 0; // skip-it
+
+		// TODO: check if value is yet set first time, i.e if it's valid? 
+
+    String formatted = reg.getFormattedValue( address );
+
+		snprintf_P(m_json, sizeof(m_json), "\"%d\":\"%s\",", address, formatted);
+
+		m_server.sendContent(m_json, strlen(m_json));
+
+    m_visit_cnt++;
+
+		return 0; // 0 assured traversing continues.
+}
+
+
 void InternalWebServer::dataJson() {
 	printD("Serving /data.json over http...");
 	uint64_t now = millis64();
@@ -710,27 +742,22 @@ void InternalWebServer::dataJson() {
 	server.setContentLength(CONTENT_LENGTH_UNKNOWN);
 	server.send(200);
 
+	RegisterVisitor visitor( server ); // visitor on stack.
+
 	server.sendContent("{", 1);
 
+	// pass visitor through registers while holding semaphore. 
+	// Timeout infinite may cause suspend until register manager is done with latest operation.
+	if ( m_register_manager_p!=0 ) 
+  {
+		int32_t res = m_register_manager_p->accept( visitor ); 
+		debugI("JSON visitor ret %d, export cnt %d", res, visitor.visitCount() );
+	}	
+	else 
+	  debugE("No register manager");
+
 	char json[32];
-	int regindex = 0;
-	while(regindex < registers->size()) {
-		Register* reg = registers->get(regindex);
-		regindex++;
-
-		int start = reg->getStart();
-		int len = reg->getLength();
-        for(int i = 0; i< len; i++) {
-            int address = start + i + 1;
-            const String &name = reg->getRegisterName(address);
-            if(name != "") {
-							String formatted = reg->getFormattedValue(address);
-							snprintf_P(json, sizeof(json), "\"%d\":\"%s\",", address, formatted);
-							server.sendContent(json, strlen(json));
-            }
-        }
-	}
-
+	// export uptime as last field.
 	snprintf_P(json, sizeof(json), "\"u\":\"%lu\"}", (uint32_t) (now / 1000));
 	server.sendContent(json, strlen(json));
 }

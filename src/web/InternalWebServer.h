@@ -14,7 +14,9 @@
 
 #include "Arduino.h"
 #include <MQTT.h>
-#include <LinkedList.h>
+
+#include "registermanager.h"
+
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -26,18 +28,43 @@ public:
 	typedef std::function<void(String &topic, String &payload)> THandlerFunction;
 
 	InternalWebServer(HwTools*);
-    void setup(configuration*, MQTTClient*, LinkedList<Register*>*, Stream*);
-    void loop();
+  void setup(configuration*, MQTTClient*, RegisterManager *regman, Stream*);
+  void loop();
 	void setMqttEnabled(bool);
 	void setMessageHandler(THandlerFunction);
 
 private:
+	/************************************************************************
+	// Visitor passed through registry manager to export JSON data on
+	// registers.
+	/************************************************************************/
+	class RegisterVisitor : public RegisterManager::Visitor
+	{
+			WebServer &m_server;
+	    uint32_t   m_visit_cnt; // num MQTT messages sent.
+			char       m_json[64];
+	public:
+	    RegisterVisitor(WebServer &server) 
+			: Visitor(0,FLG_VISIT_REG_SINGLE|FLG_VISIT_UPDATED|FLG_VISIT_WRITE_PENDING|FLG_VISIT_UNCHANGED), m_server(server), m_visit_cnt(0) {}
+
+	    uint32_t visitCount() const { return m_visit_cnt; }
+	    void     resetVisitCount() { m_visit_cnt=0; }
+
+	    // Implement in your visitor class and return negative to
+	    // interrupt traverse.
+	    virtual int32_t visit( Register &reg ) { return 0; };
+	    virtual int32_t visit( int32_t address, Register &reg );;
+	};
+
+
+private:
 	HwTools* hw;
-    configuration* config;
+  configuration* config;
 	WebConfig webConfig;
 	MQTTClient* mqtt;
 	bool mqttEnabled = false;
-	LinkedList<Register*>* registers;
+	RegisterManager *m_register_manager_p; //LinkedList<Register*> *registers;
+	std::vector<Register*> *registers;
 	THandlerFunction fn;
 	Stream* debugger;
 
@@ -76,15 +103,16 @@ private:
 	void handleSave();
 	void handleSetup();
 
-   	size_t print(const char* text);
+
+ 	size_t print(const char* text);
 	size_t println(const char* text);
 	size_t print(const Printable& data);
 	size_t println(const Printable& data);
 
-   	size_t printD(const char* text);
-   	size_t printI(const char* text);
-   	size_t printW(const char* text);
-   	size_t printE(const char* text);
+ 	size_t printD(const char* text);
+ 	size_t printI(const char* text);
+ 	size_t printW(const char* text);
+ 	size_t printE(const char* text);
 };
 
 #endif
