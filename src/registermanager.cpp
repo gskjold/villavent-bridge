@@ -1,4 +1,3 @@
-#include "registermanager.h"
 
 
 #include "register/fanregister.h"
@@ -15,6 +14,7 @@
 #include "register/alarmcoil.h"
 #include "register/alarmregister.h"
 
+#include "registermanager.h"
 
 
 #include "debugger.h"
@@ -112,6 +112,23 @@ void RegisterManager::unprotect()
   m_sem.give();
 }
 
+/* *************************************************** */
+void RegisterManager::simulateChangesOnNotConnected()
+{
+/* TEST CODE TO SIMULATE CHANGES WHEN NOT CONNECTED:
+        Register *r = findRegisterByAddress( REG_FAN_SF_RPM );
+        if ( r ) 
+        {
+          uint16_t v = millis() & 0xffff;
+          const Register::SingleReg *rp;
+          bool was_changed = r->hasUpdatedValue(REG_FAN_SF_RPM, &rp );
+          bool ch = r->setValue( REG_FAN_SF_RPM, v); // set value, return true if changed.
+          bool now_changed = r->hasUpdatedValue(REG_FAN_SF_RPM, &rp );
+          bool rdy = rp->readyForMqttExport( millis() );
+          debugI("Set SF fan %d upd %s, changed %s => %s rdy %s", v, ch?"Y":"N", was_changed?"Y":"N", now_changed ? "Y":"NO", rdy ? "Y":"N");
+        }
+   END TEST CODE */
+}
 
 /* *************************************************** */
 /* The main thread loop. 
@@ -155,6 +172,9 @@ void RegisterManager::taskCode()
       }
       else
       {
+        // In this method one can add simulation of changes on a not-connected test device.
+        simulateChangesOnNotConnected(); 
+
         switchState( STATE_CONNECTING );
         backoff_time_ms = 1000;
       }
@@ -411,12 +431,12 @@ public:
     // Implement in your visitor class and return negative to
     // interrupt traverse.
     virtual int32_t visit( Register &reg ) { return 0; };
-    virtual int32_t visit( int32_t address, Register &reg );;
+    virtual int32_t visit( int32_t address, Register &reg, const Register::SingleReg &sreg );;
 };
 
 
 /* *************************************************** */
-int32_t PendingWriteVisitor::visit( int32_t address, Register &reg )
+int32_t PendingWriteVisitor::visit( int32_t address, Register &reg, const Register::SingleReg &sreg )
 {
   if ( reg.hasPendingWrite(address)== false ) // uneeded extra check..
     return 0;
@@ -526,7 +546,8 @@ int32_t RegisterManager::acceptNoProtect(Visitor &visitor)
 
   int32_t visitor_res = 0;
 
-   // debugI("Accept traverse count %d start at %d", count, visitor.currIndex() );
+  // debugI("Accept traverse count %d start at %d", count, visitor.currIndex() );
+  uint32_t ms_now = millis();
 
   // visit each reg at most once. Break if visitor returns negative.
   for (  i=0; visitor_res>=0 && i<count; i++ ) 
@@ -555,14 +576,21 @@ int32_t RegisterManager::acceptNoProtect(Visitor &visitor)
     {
       int address = start + j + 1; // calculate register address value.
 
-      bool updated = reg->hasUpdatedValue(address); // whether a new values is available.
+      const Register::SingleReg *srp = 0;
+
+      bool updated = reg->hasUpdatedValue(address, &srp ); // whether a new values is available.
+      bool ready_for_export = updated;
+      if ( srp )
+        ready_for_export = srp->readyForMqttExport(ms_now); // checks both update falgs and throttle timer.
+
       bool pnd_wr = reg->hasPendingWrite(address);  // whether there is a pending write on register.
 
       if ( (visitor.getFlags(Visitor::FLG_VISIT_WRITE_PENDING) && pnd_wr) ||
            (visitor.getFlags(Visitor::FLG_VISIT_UPDATED) && updated) ||
+           (visitor.getFlags(Visitor::FLG_VISIT_UPDATED_THROTTLE) && ready_for_export ) ||
            (visitor.getFlags(Visitor::FLG_VISIT_UNCHANGED) ) )
       {
-        visitor_res = visitor.visit( address, *reg );
+        visitor_res = visitor.visit( address, *reg, *srp );
         if ( visitor_res < 0 )
           break;
       }

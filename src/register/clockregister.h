@@ -14,13 +14,13 @@
 class ClockRegister : public Register {
     public:
         ClockRegister() : Register("clock", 550, 7, 1000, false) {
-            addRegister(REG_CLK_S, "clock/second");
-            addRegister(REG_CLK_M, "clock/minute");
-            addRegister(REG_CLK_H, "clock/hour");
-            addRegister(REG_CLK_D, "clock/day");
-            addRegister(REG_CLK_MNTH, "clock/month");
-            addRegister(REG_CLK_Y, "clock/year");
-            addRegister(REG_CLK_WD, "clock/weekday", PERM_READ_ONLY);
+            addRegister(REG_CLK_S, "clock/second", PERM_FULL, false );
+            addRegister(REG_CLK_M, "clock/minute", PERM_FULL, false );
+            addRegister(REG_CLK_H, "clock/hour", PERM_FULL, false );
+            addRegister(REG_CLK_D, "clock/day", PERM_FULL, false);
+            addRegister(REG_CLK_MNTH, "clock/month", PERM_FULL, false );
+            addRegister(REG_CLK_Y, "clock/year", PERM_FULL, false);
+            addRegister(REG_CLK_WD, "clock/weekday", PERM_READ_ONLY, false);
         };
 
         String getFormattedValue(int address) const;

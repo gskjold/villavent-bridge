@@ -2,6 +2,44 @@
 #include "../debugger.h"
 
 /* ******************************************************** */
+ // set flags, return the ones that were previously 0.
+uint8_t Register::SingleReg::setFlags( uint8_t flags )
+{
+   uint8_t prev = getFlags( flags );
+
+   m_flags |= flags;
+
+   return flags & ~prev;
+}
+
+/* ******************************************************** */
+// clear flags return the ones that were previusly 1.
+uint8_t Register::SingleReg::clearFlags( uint8_t flags )
+{
+    uint32_t prev = getFlags( flags );
+    m_flags &= ~flags;
+    return flags & prev;
+}
+
+/* ******************************************************** */
+bool Register::SingleReg::readyForMqttExport( uint32_t ms_now ) const 
+{
+    if ( getFlags( FLG_VALUE_UPDATED ) == 0  )
+      return false;
+
+    if ( m_mqtt_period_256ms==0 ) return true;    // no throttling set.
+    if ( m_mqtt_timestamp_256ms==0 ) return true; // no timestamp set yet.
+
+    uint16_t tm = MsTo256ms( ms_now );
+
+    uint16_t diff = tm - m_mqtt_timestamp_256ms; // signed diff, negative values will have upper bit set, i.e large.
+    if ( diff > m_mqtt_period_256ms )
+      return true;
+    
+    return false;
+}
+
+/* ******************************************************** */
 String Register::getName() const {
     return m_name;
 }
@@ -55,29 +93,42 @@ boolean Register::setValue(int address, int value)
 
     bool changed =  (current != value) || !isReadable(address);
     if ( changed )
-      reg.m_flags |= FLG_VALUE_UPDATED;
-
+    {
+      if ( reg.setFlags(FLG_VALUE_UPDATED) != 0 )
+      {
+      }
+    } 
+    
     return changed;
 }
 
 /* ******************************************************** */
-bool  Register::hasUpdatedValue(int32_t address) const
+bool  Register::hasUpdatedValue(int32_t address, const SingleReg **sreg_pp) const
 {
     int32_t idx = addr2Index( address, "hasUpdatedValue" );
     if( idx == VAL_INVALID )
       return false;
 
-    return (m_single_regs[idx].m_flags & FLG_VALUE_UPDATED);  
+    SingleReg *sr = &m_single_regs[idx]; 
+
+    if ( sreg_pp  ) *sreg_pp = sr; // return single register context pointer
+
+    return (sr->getFlags(FLG_VALUE_UPDATED)) ? true : false;
+
 }
 
 /* ******************************************************** */
-void Register::confirmUpdate( int32_t address )
+void Register::confirmUpdate( int32_t address, uint32_t millis )
 {
     int idx = addr2Index( address, "confirmUpdate");
     if( idx == VAL_INVALID )
        return ;
-    
-    m_single_regs[idx].m_flags &= (~FLG_VALUE_UPDATED);
+
+    m_single_regs[idx].clearFlags( FLG_VALUE_UPDATED);
+
+    // remember time last exported for possible additional throttling.
+    m_single_regs[idx].setMqttExportTimestamp( millis );
+
 }
 
 
@@ -135,7 +186,7 @@ void Register::confirmPendingWrite( int32_t address )
 
 
 /* ******************************************************** */
-void Register::addRegister(int address, const String &name, byte permission) {
+void Register::addRegister(int address, const String &name, byte permission,  bool mqtt_retain, uint32_t mqtt_throttle_time_ms) {
    int idx = addr2Index( address, "addRegister");
     if( idx == VAL_INVALID )
       return;
@@ -144,6 +195,11 @@ void Register::addRegister(int address, const String &name, byte permission) {
     r.m_perm = permission;
     r.m_value = isReadable( address ) ? VAL_INVALID : 0;
     r.m_flags = 0; // TODO add flags?
+    r.m_mqtt_timestamp_256ms = 0;
+
+    if ( mqtt_retain ) r.setFlags(FLG_MQTT_RETAIN);
+    r.setMqttThrottlePeriodMs( mqtt_throttle_time_ms);
+
 }
 
 /* ******************************************************** */

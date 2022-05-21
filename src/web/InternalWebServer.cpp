@@ -704,7 +704,7 @@ void InternalWebServer::applicationJs() {
 }
 
 // Called on every single register
-int32_t InternalWebServer::RegisterVisitor::visit( int32_t address, Register &reg)
+int32_t InternalWebServer::RegisterVisitor::visit( int32_t address, Register &reg, const Register::SingleReg &sreg)
 {
     const String &name = reg.getRegisterName( address );
 

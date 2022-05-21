@@ -41,11 +41,11 @@ class HeaterRegister : public Register {
             addRegister(REG_HC_TEMP_LVL3, "temperature/level3", PERM_READ_ONLY);
             addRegister(REG_HC_TEMP_LVL4, "temperature/level4", PERM_READ_ONLY);
             addRegister(REG_HC_TEMP_LVL5, "temperature/level5", PERM_READ_ONLY);
-            addRegister(REG_HC_TEMP_IN1, "temperature/supply", PERM_READ_ONLY);
-            addRegister(REG_HC_TEMP_IN2, "temperature/extract", PERM_READ_ONLY);
-            addRegister(REG_HC_TEMP_IN3, "temperature/exhaust", PERM_READ_ONLY);
-            addRegister(REG_HC_TEMP_IN4, "temperature/protection", PERM_READ_ONLY);
-            addRegister(REG_HC_TEMP_IN5, "temperature/intake", PERM_READ_ONLY);
+            addRegister(REG_HC_TEMP_IN1, "temperature/supply", PERM_READ_ONLY, false, 20000);
+            addRegister(REG_HC_TEMP_IN2, "temperature/extract", PERM_READ_ONLY, false,20000);
+            addRegister(REG_HC_TEMP_IN3, "temperature/exhaust", PERM_READ_ONLY, false,20000);
+            addRegister(REG_HC_TEMP_IN4, "temperature/protection", PERM_READ_ONLY, false, 20000);
+            addRegister(REG_HC_TEMP_IN5, "temperature/intake", PERM_READ_ONLY, false, 20000 );
             addRegister(REG_HC_TEMP_STATE, "", PERM_NONE);
             addRegister(REG_HC_PREHEATER_TYPE, "preheater/type");
             addRegister(REG_HC_HEATER_TEMP_SP, "heater/setpoint", PERM_READ_ONLY);

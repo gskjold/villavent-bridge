@@ -55,8 +55,8 @@ class FanRegister : public Register {
             addRegister(REG_FAN_FLOW_UNITS, "fan/flow/unit");
             addRegister(REG_FAN_SF_PWM, "fan/supply/pwm", PERM_READ_ONLY);
             addRegister(REG_FAN_EF_PWM, "fan/extract/pwm", PERM_READ_ONLY);
-            addRegister(REG_FAN_SF_RPM, "fan/supply/rpm", PERM_READ_ONLY);
-            addRegister(REG_FAN_EF_RPM, "fan/extract/rpm", PERM_READ_ONLY);
+            addRegister(REG_FAN_SF_RPM, "fan/supply/rpm", PERM_READ_ONLY, false, 10000 );
+            addRegister(REG_FAN_EF_RPM, "fan/extract/rpm", PERM_READ_ONLY, false, 10000 );
             addRegister(REG_FAN_SPEED_LVL_CD, "fan/speed/display", PERM_READ_ONLY);
             addRegister(REG_FAN_ALLOW_MANUAL_FAN_STOP, "fan/allowstop");
             addRegister(REG_FAN_SPEED_LOG_RESET, "fan/speed/log/reset", PERM_WRITE_ONLY);

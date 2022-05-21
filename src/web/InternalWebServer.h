@@ -53,7 +53,7 @@ private:
 	    // Implement in your visitor class and return negative to
 	    // interrupt traverse.
 	    virtual int32_t visit( Register &reg ) { return 0; };
-	    virtual int32_t visit( int32_t address, Register &reg );;
+	    virtual int32_t visit( int32_t address, Register &reg , const Register::SingleReg &sreg);
 	};
 
 

@@ -379,7 +379,7 @@ class MQTTUpdateVisitor : public RegisterManager::Visitor
 {
     uint32_t m_messages_sent; // num MQTT messages sent.
 public:
-    MQTTUpdateVisitor() : Visitor(0,FLG_VISIT_REG_SINGLE|FLG_VISIT_UPDATED), m_messages_sent(0) {}
+    MQTTUpdateVisitor() : Visitor(0,FLG_VISIT_REG_SINGLE|FLG_VISIT_UPDATED_THROTTLE), m_messages_sent(0) {}
     //~MQTTUpdateVisitor();
 
     uint32_t numMessagesSent() const { return m_messages_sent; }
@@ -388,24 +388,26 @@ public:
     // Implement in your visitor class and return negative to
     // interrupt traverse.
     virtual int32_t visit( Register &reg ) { return 0; };
-    virtual int32_t visit( int32_t address, Register &reg );;
+    virtual int32_t visit( int32_t address, Register &reg, const Register::SingleReg &sreg );
 
 };
 
 // Called to visit updated nodes only, no need to check specifically
-int32_t MQTTUpdateVisitor::visit( int32_t address, Register &reg)
+int32_t MQTTUpdateVisitor::visit( int32_t address, Register &reg, const Register::SingleReg &sreg)
 {
     const String &name = reg.getRegisterName( address );
     String formatted = reg.getFormattedValue( address );
 
-    debugI("visit %s", name.c_str());
+    bool retain = sreg.mqttRetain(); 
 
-    sendMqttMessage(name, formatted);
+    //debugI("visit %s retain %s", name.c_str(), retain ? "Y":"N");
+
+    sendMqttMessage(name, formatted, retain);
 
     //TODO : could send fail and we need to handle that ?
 
     // Clear updated flag - i.e signal that change has been handled.
-    reg.confirmUpdate( address );
+    reg.confirmUpdate( address, millis() );
 
     m_messages_sent++;
 
@@ -643,12 +645,16 @@ void mqttMessageReceived(String &topic, String &payload) {
 
 }
 
-void sendMqttMessage(const String &name, String &payload) {
+void sendMqttMessage(const String &name, String &payload, bool retain) {
+
     if(!mqtt.connected() || mqttConfig == NULL || strlen(mqttConfig->publishTopic) == 0) return;
 
     String topic = String(mqttConfig->publishTopic) + "/" + name;
-    debugD("MQTT publish to %s with payload %s", topic.c_str(), payload.c_str());
+    
+    debugD("MQTT publish %-20s : %s %s", topic.c_str(), payload.c_str(), retain ? "retain" : "");
+    
     mqtt.publish(topic.c_str(), payload.c_str(), true, 0);
     mqtt.loop();
+
     yield();
 }

@@ -73,12 +73,13 @@ public:
   public:
     // Flags 
     enum FilterMasks { 
-      FLG_VISIT_REG_BLOCK     = 0x01,
-      FLG_VISIT_REG_SINGLE    = 0x02,
-      FLG_VISIT_UNCHANGED     = 0x04, 
-      FLG_VISIT_UPDATED       = 0x08,
-      FLG_VISIT_WRITE_PENDING = 0x10,
-      FLG_VISIT_ALL= FLG_VISIT_REG_BLOCK|FLG_VISIT_REG_SINGLE|FLG_VISIT_UNCHANGED|FLG_VISIT_UPDATED|FLG_VISIT_WRITE_PENDING 
+      FLG_VISIT_REG_BLOCK        = 0x01,
+      FLG_VISIT_REG_SINGLE       = 0x02,
+      FLG_VISIT_UNCHANGED        = 0x04, 
+      FLG_VISIT_UPDATED          = 0x08,
+      FLG_VISIT_UPDATED_THROTTLE = 0x10, // only visit single registers if updated and throttle timer ready.
+      FLG_VISIT_WRITE_PENDING    = 0x20,
+      FLG_VISIT_ALL= FLG_VISIT_REG_BLOCK|FLG_VISIT_REG_SINGLE|FLG_VISIT_UNCHANGED|FLG_VISIT_UPDATED|FLG_VISIT_UPDATED_THROTTLE|FLG_VISIT_WRITE_PENDING 
     };
 
     // Visitor. start_idx can be set to start from previous value to implement
@@ -99,7 +100,7 @@ public:
 
     // Implement this to visit individual single registers
     ///return negative will interrupt traverse.
-    virtual int32_t visit( int32_t address, Register &reg ) { return 0; };
+    virtual int32_t visit( int32_t address, Register &reg, const Register::SingleReg &sreg ) { return 0; };
 
     int32_t currIndex() const { return m_curr_idx; }
     void    resetIndex() { m_curr_idx=0; }
@@ -139,6 +140,9 @@ private:
   int32_t acceptNoProtect( Visitor &visitor);
 
   void clearStats();
+
+  void simulateChangesOnNotConnected();
+
 
 private:
   OSAPI_Semaphore        m_sem;
