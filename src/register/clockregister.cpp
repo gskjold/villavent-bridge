@@ -41,7 +41,7 @@ boolean ClockRegister::setFormattedValue(int address, const String &value, bool 
     return false;
 }
 
-String ClockRegister::getFormattedValue(int address) {
+String ClockRegister::getFormattedValue(int address) const {
     int value = getValue(address);
     if(value == VAL_INVALID)
         return "";

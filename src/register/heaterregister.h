@@ -51,7 +51,7 @@ class HeaterRegister : public Register {
             addRegister(REG_HC_HEATER_TEMP_SP, "heater/setpoint", PERM_READ_ONLY);
         };
 
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
         boolean setFormattedValue(int address, const String &value, bool setpending=false);
 };
 

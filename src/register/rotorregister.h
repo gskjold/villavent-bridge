@@ -13,7 +13,7 @@ class RotorRegister : public Register {
             addRegister(REG_ROTOR_RELAY_ACTIVE, "rotor/relay", PERM_READ_ONLY);
         };
 
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
 };
 
 #endif

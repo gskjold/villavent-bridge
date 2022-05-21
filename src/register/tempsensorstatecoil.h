@@ -19,7 +19,7 @@ class TempSensorStateCoil : public Register {
             addRegister(COIL_HC_TEMP_IN5_STATE, "temperature/intake/alarm", PERM_READ_ONLY);
         };
 
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
 };
 
 #endif

@@ -85,7 +85,7 @@ class FanRegister : public Register {
             addRegister(REG_FAN_CONTROL_TYPE, "fan/controltype");
         };
 
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
         boolean setFormattedValue(int address, const String &value, bool setpending=false);
 };
 

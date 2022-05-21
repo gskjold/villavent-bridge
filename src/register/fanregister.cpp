@@ -66,7 +66,7 @@ boolean FanRegister::setFormattedValue(int address, const String &value, bool se
     return false;
 };
 
-String FanRegister::getFormattedValue(int address) {
+String FanRegister::getFormattedValue(int address) const {
     int value = getValue(address);
     if(value == VAL_INVALID)
         return "";

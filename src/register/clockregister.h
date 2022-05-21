@@ -23,7 +23,7 @@ class ClockRegister : public Register {
             addRegister(REG_CLK_WD, "clock/weekday", PERM_READ_ONLY);
         };
 
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
         boolean setFormattedValue(int address, const String &value, bool setpending=false);
 };
 

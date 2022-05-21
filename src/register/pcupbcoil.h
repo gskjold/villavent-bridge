@@ -15,7 +15,7 @@ class PcuPbCoil : public Register {
             addRegister(COIL_HC_COMMON_RELAY, "hc/relay", PERM_READ_ONLY);
         };
 
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
 };
 
 #endif

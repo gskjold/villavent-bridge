@@ -24,7 +24,7 @@ class InputCoil : public Register {
         };
 
         boolean setFormattedValue(int address, const String &value, bool setpending=false);
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
 };
 
 #endif

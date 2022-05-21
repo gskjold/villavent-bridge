@@ -1,6 +1,6 @@
 #include "rotorregister.h"
 
-String RotorRegister::getFormattedValue(int address) {
+String RotorRegister::getFormattedValue(int address) const {
     int val = getValue(address);
     if(val == VAL_INVALID)
         return "";

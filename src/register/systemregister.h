@@ -23,7 +23,7 @@ class SystemRegister : public Register {
             addRegister(REG_SYSTEM_BOOT_PROG_V_LOW, "system/boot/version/low", PERM_READ_ONLY);
         };
 
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
 };
 
 #endif

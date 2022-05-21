@@ -1,6 +1,6 @@
 #include "pcupbcoil.h"
 
-String PcuPbCoil::getFormattedValue(int address) {
+String PcuPbCoil::getFormattedValue(int address) const {
     int value = getValue(address);
     if(value == VAL_INVALID)
         return "";

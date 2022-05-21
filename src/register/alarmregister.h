@@ -13,7 +13,7 @@ class AlarmRegister : public Register {
             addRegister(REG_ALARMS_RELAY_ACTIVE, "alarm/relay", PERM_READ_ONLY);
         };
 
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
 };
 
 #endif

@@ -79,7 +79,7 @@ boolean HeaterRegister::setFormattedValue(int address, const String &value, bool
     return false;
 }
 
-String HeaterRegister::getFormattedValue(int address) {
+String HeaterRegister::getFormattedValue(int address) const {
     int value = getValue(address);
     if(value == VAL_INVALID)
         return "";
@@ -91,6 +91,7 @@ String HeaterRegister::getFormattedValue(int address) {
                 return String(0);
         case REG_HC_FPS_LEVEL:
             return String(((double) value) / 10);
+        case REG_HC_TEMP_SP:
         case REG_HC_TEMP_LVL1:
         case REG_HC_TEMP_LVL2:
         case REG_HC_TEMP_LVL3:

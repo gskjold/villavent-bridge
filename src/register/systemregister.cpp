@@ -1,6 +1,6 @@
 #include "systemregister.h"
 
-String SystemRegister::getFormattedValue(int address) {
+String SystemRegister::getFormattedValue(int address) const {
     int value = getValue(address);
     if(value == VAL_INVALID)
         return "";

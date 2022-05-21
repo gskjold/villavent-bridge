@@ -27,7 +27,7 @@ class AlarmCoil : public Register {
             addRegister(COIL_ALARMS_DAMPER, "damper/alarm", PERM_READ_ONLY);
         };
 
-        String getFormattedValue(int address);
+        String getFormattedValue(int address) const;
 };
 
 #endif

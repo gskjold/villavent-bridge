@@ -1,6 +1,6 @@
 #include "alarmregister.h"
 
-String AlarmRegister::getFormattedValue(int address) {
+String AlarmRegister::getFormattedValue(int address) const {
     int value = getValue(address);
     if(value == VAL_INVALID)
         return "";

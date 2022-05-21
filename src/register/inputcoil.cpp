@@ -21,7 +21,7 @@ boolean InputCoil::setFormattedValue(int address, const String &value, bool setp
     return false;
 }
 
-String InputCoil::getFormattedValue(int address) {
+String InputCoil::getFormattedValue(int address) const {
     int value = getValue(address);
     if(value == VAL_INVALID)
         return "";

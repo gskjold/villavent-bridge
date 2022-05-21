@@ -1,6 +1,6 @@
 #include "alarmcoil.h"
 
-String AlarmCoil::getFormattedValue(int address) {
+String AlarmCoil::getFormattedValue(int address) const {
     int value = getValue(address);
     if(value == VAL_INVALID)
         return "";
