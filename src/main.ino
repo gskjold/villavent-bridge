@@ -648,7 +648,7 @@ void sendMqttMessage(const String &name, String &payload) {
 
     String topic = String(mqttConfig->publishTopic) + "/" + name;
     debugD("MQTT publish to %s with payload %s", topic.c_str(), payload.c_str());
-    mqtt.publish(topic.c_str(), payload.c_str());
+    mqtt.publish(topic.c_str(), payload.c_str(), true, 0);
     mqtt.loop();
     yield();
 }
