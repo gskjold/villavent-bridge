@@ -639,10 +639,6 @@ void mqttMessageReceived(String &topic, String &payload) {
     }
 
     debugD(" pending set = %d", setres );
-
-
-
-
 }
 
 void sendMqttMessage(const String &name, String &payload, bool retain) {

@@ -62,13 +62,7 @@ void InternalWebServer::setup(configuration* config, MQTTClient* mqtt, RegisterM
 
 	server.begin(); // Web server start
 
-	print("Web server is ready for config at http://");
-	if(WiFi.getMode() == WIFI_AP) {
-		print(WiFi.softAPIP());
-	} else {
-		print(WiFi.localIP());
-	}
-	println("/");
+	println("Web server is ready for config");
 
 	config->getWebConfig(webConfig);
 	MqttConfig mqttConfig;
